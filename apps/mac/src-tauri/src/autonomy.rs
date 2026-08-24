@@ -662,7 +662,9 @@ mod tests {
 
         let alphas = icon
             .rgba()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|pixel| pixel[3])
             .collect::<Vec<_>>();
         let visible = alphas.iter().filter(|alpha| **alpha > 0).count();
