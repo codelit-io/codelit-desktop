@@ -447,7 +447,7 @@ dependencies = [
  "chrono-tz",
  "core-foundation",
  "core-graphics",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "libc",
  "minisign-verify",
  "objc2",
