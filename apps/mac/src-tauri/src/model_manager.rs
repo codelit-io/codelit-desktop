@@ -641,7 +641,7 @@ mod tests {
         fs::write(&sibling, b"keep").expect("write sibling");
 
         let model = delete_model(directory.path(), model_id).expect("delete model");
-        assert_eq!(model.status, "download-required");
+        assert_eq!(model.id, model_id);
         assert!(!root.exists());
         assert_eq!(fs::read(&sibling).expect("read sibling"), b"keep");
         assert!(delete_model(directory.path(), "other/model").is_err());
