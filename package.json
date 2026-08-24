@@ -1,0 +1,34 @@
+{
+  "name": "codelit-desktop",
+  "version": "0.1.1",
+  "private": true,
+  "license": "MPL-2.0",
+  "engines": {
+    "node": "24.x"
+  },
+  "workspaces": [
+    "apps/mac"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "desktop:dev": "npm run desktop:mlx:build && npm run desktop:mlx:stage && npm run desktop:scheduler:build && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" npm --prefix apps/mac run tauri dev -- --config src-tauri/tauri.dev.conf.json",
+    "desktop:build": "node apps/mac/scripts/build-desktop-release.mjs --channel direct --adhoc",
+    "desktop:build:app-store-spike": "node apps/mac/scripts/build-desktop-release.mjs --channel app-store --adhoc",
+    "desktop:check": "npm --prefix apps/mac run check && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" npm --prefix apps/mac run test:native",
+    "desktop:qa:renderer": "npm --prefix apps/mac run build && node apps/mac/scripts/qa-desktop-renderer.mjs",
+    "desktop:mlx:build": "cd apps/mac/native/mlx-helper && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -quiet -scheme CodelitMLXHelper -destination 'platform=macOS,arch=arm64' -configuration Release -derivedDataPath \"${TMPDIR:-/tmp}/codelit-mlx-build\" -skipPackagePluginValidation -skipMacroValidation CODE_SIGNING_ALLOWED=NO",
+    "desktop:mlx:stage": "node apps/mac/scripts/prepare-mlx-sidecar.mjs",
+    "desktop:scheduler:build": "node apps/mac/scripts/build-scheduler-helper.mjs",
+    "desktop:release:check": "node apps/mac/scripts/check-desktop-release.mjs",
+    "desktop:release:prepare": "node apps/mac/scripts/prepare-desktop-release.mjs",
+    "desktop:release:verify": "node apps/mac/scripts/verify-desktop-release.mjs",
+    "desktop:release:publish-assets": "node apps/mac/scripts/publish-direct-release-assets.mjs",
+    "desktop:release:activate": "node apps/mac/scripts/activate-direct-release.mjs",
+    "desktop:app-store:check": "node apps/mac/scripts/check-app-store-submission.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "axe-core": "4.11.1",
+    "vitest": "3.2.7"
+  }
+}

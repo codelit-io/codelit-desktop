@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["app"],
+    "createUpdaterArtifacts": false,
+    "externalBin": [
+      "binaries/codelit-mlx-helper"
+    ],
+    "macOS": {
+      "hardenedRuntime": true,
+      "entitlements": "entitlements/app-store.plist",
+      "infoPlist": "Info.app-store.plist"
+    }
+  }
+}

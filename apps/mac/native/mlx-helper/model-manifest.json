@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "signature": {
+    "scheme": "apple-code-signature",
+    "scope": "embedded-bundle-resource"
+  },
+  "licenseAllowlist": [
+    "apache-2.0"
+  ],
+  "models": [
+    {
+      "id": "mlx-community/Qwen3-0.6B-4bit",
+      "revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+      "label": "Qwen 3 0.6B - Quick local",
+      "license": "apache-2.0",
+      "downloadBytes": 349711765,
+      "minimumMemoryBytes": 8589934592,
+      "recommendedMemoryBytes": 8589934592,
+      "releaseValidatedMemoryGiB": [32],
+      "capabilities": [
+        "structured-output",
+        "classification",
+        "short-drafting"
+      ],
+      "honestUse": "Quick summaries, classification, and small structured drafts.",
+      "files": [
+        { "path": "added_tokens.json", "bytes": 707, "sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680" },
+        { "path": "config.json", "bytes": 937, "sha256": "15d3ac26c043ae477273ed5802ee0f0b33bb14f18c9d3dd70910c02d906e3f1f" },
+        { "path": "model.safetensors", "bytes": 335450584, "sha256": "392e8d466d56100ada00eb82031fb854297fc9e389b7d303eba3af114e87bce2" },
+        { "path": "model.safetensors.index.json", "bytes": 49731, "sha256": "7b294141456f6904936db03c00bca50fb5f6198f652fe8483f9cd2a1018accfb" },
+        { "path": "special_tokens_map.json", "bytes": 613, "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd" },
+        { "path": "tokenizer.json", "bytes": 11422654, "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4" },
+        { "path": "tokenizer_config.json", "bytes": 9706, "sha256": "253153d0738ceb4c668d2eff957714dd2bea0b56de772a9fdccd96cbf517e6a0" },
+        { "path": "vocab.json", "bytes": 2776833, "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910" }
+      ]
+    },
+    {
+      "id": "mlx-community/Qwen3-8B-4bit",
+      "revision": "545dc4251c05440727734bcd94334791f6ab0192",
+      "label": "Qwen 3 8B - More capable local",
+      "license": "apache-2.0",
+      "downloadBytes": 4622110691,
+      "minimumMemoryBytes": 17179869184,
+      "recommendedMemoryBytes": 25769803776,
+      "releaseValidatedMemoryGiB": [32],
+      "capabilities": [
+        "structured-output",
+        "bounded-context",
+        "tool-calling",
+        "reasoning",
+        "general-assistance"
+      ],
+      "honestUse": "More capable local conversation, planning, context use, and tool selection.",
+      "files": [
+        { "path": "added_tokens.json", "bytes": 707, "sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680" },
+        { "path": "config.json", "bytes": 939, "sha256": "e5485285fd7e289e76e9cffa112f6dc2e3426519082f7db9b69041589f81a218" },
+        { "path": "model.safetensors", "bytes": 4607835174, "sha256": "f2d29621aab300336ad645567ff38c42aac755513006ef4e8a579cf7ef5256d8" },
+        { "path": "model.safetensors.index.json", "bytes": 64065, "sha256": "3fb25463b4078b1fc27159daa605190029c2e965f533bf0b1b594f96cbfceb8a" },
+        { "path": "special_tokens_map.json", "bytes": 613, "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd" },
+        { "path": "tokenizer.json", "bytes": 11422654, "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4" },
+        { "path": "tokenizer_config.json", "bytes": 9706, "sha256": "253153d0738ceb4c668d2eff957714dd2bea0b56de772a9fdccd96cbf517e6a0" },
+        { "path": "vocab.json", "bytes": 2776833, "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910" }
+      ]
+    }
+  ]
+}

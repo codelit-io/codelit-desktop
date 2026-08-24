@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "app": {
+    "name": "Codelit",
+    "subtitle": "Private AI bots for Mac",
+    "bundleId": "io.codelit.desktop",
+    "build": "14",
+    "sku": "codelit-mac",
+    "platform": "macOS",
+    "minimumSystemVersion": "14.0",
+    "architecture": "arm64",
+    "primaryCategory": "DEVELOPER_TOOLS",
+    "price": "free",
+    "inAppPurchases": false
+  },
+  "localization": {
+    "locale": "en-US",
+    "promotionalText": "Create persistent AI bots that remember approved context, collaborate on work, and run with private on-device intelligence on your Mac.",
+    "description": "Codelit gives you a small team of persistent AI bots that lives on your Mac. Create a bot in plain language, talk through the work, and keep each conversation, run, memory, and skill together in one focused workspace.\n\nStart without an account. Codelit can use its built-in on-device model on supported Macs, so local prompts and model output stay on the device. You can also select a user-owned API provider when you explicitly choose it. Codelit never silently changes billing families.\n\nEach bot has a clear job, approved memory, reusable skills, a local data table, and an inspectable history. Add specialist bots to a conversation when a task benefits from another perspective. Runs show a clear status while private safety records preserve approvals and failures without cluttering the conversation.\n\nThe Mac App Store version supports local conversations, bots, memories, skills, multi-bot handoffs, selected-folder reads, and private local run history. It does not request Accessibility or Screen Recording access, and it does not include background routines, automated website inspection, or computer control.",
+    "keywords": "ai bots,local ai,ai assistant,on-device ai,automation,developer tools,memory,agents",
+    "releaseNotes": "First Mac release of Codelit Bots with local conversations, on-device inference, approved memory, reusable skills, multi-bot collaboration, and inspectable run receipts.",
+    "copyright": "2026 Codelit.io"
+  },
+  "urls": {
+    "marketing": "https://codelit.io",
+    "support": "https://codelit.io/docs/codelit-for-mac",
+    "privacyPolicy": "https://codelit.io/privacy",
+    "privacyChoices": "https://codelit.io/account/delete"
+  },
+  "commerce": {
+    "strategy": "free-local",
+    "externalPurchaseCallsToAction": false,
+    "externalPurchaseLinks": false,
+    "storeKitProducts": [],
+    "existingAccountEntitlementsOnly": false,
+    "copy": "The App Store build is free and works without a Codelit account. It does not show prices, checkout links, or purchase prompts."
+  },
+  "privacy": {
+    "tracking": false,
+    "trackingDomains": [],
+    "dataTypes": [
+      {
+        "type": "OTHER_USER_CONTENT",
+        "linked": true,
+        "tracking": false,
+        "purposes": ["APP_FUNCTIONALITY"],
+        "condition": "Only when the user explicitly selects a user-owned API provider for a bot run. Built-in on-device model runs remain local."
+      }
+    ],
+    "localOnlyData": "Bot conversations, prompts, memories, skills, routines, local tables, run events, receipts, permissions, and model data remain on the Mac when the built-in model is selected."
+  },
+  "ageRating": {
+    "unrestrictedWebAccess": false,
+    "reason": "The App Store build does not expose a browser or automated website inspection."
+  },
+  "exportCompliance": {
+    "status": "exempt-no-france",
+    "usesEncryption": true,
+    "usesNonExemptEncryption": false,
+    "franceAvailable": false,
+    "implementation": "AES-256-GCM protects local workspace records and standard HTTPS protects explicitly selected user-owned API provider traffic.",
+    "determination": "App Store Connect classified the standard encryption as exempt without document upload when France is excluded.",
+    "releaseRule": "Keep France unavailable unless a required French encryption declaration is cleared."
+  },
+  "review": {
+    "accountRequired": false,
+    "demoAccountRequired": false,
+    "contactEmail": "APP_STORE_CONNECT_SECURE_FIELD",
+    "contactPhoneSource": "APP_STORE_CONNECT_SECURE_FIELD",
+    "notesFile": "APP_REVIEW.md"
+  },
+  "testFlight": {
+    "internalGroup": "Codelit Mac Internal",
+    "externalGroup": "Codelit Mac Local-First",
+    "whatToTestFile": "TESTFLIGHT.md"
+  },
+  "screenshots": {
+    "width": 1440,
+    "height": 900,
+    "slots": [
+      { "file": "01-local-bot.png", "caption": "A private AI bot that works on your Mac" },
+      { "file": "02-bot-team.png", "caption": "Bring specialist bots into one conversation" },
+      { "file": "03-memory-and-skills.png", "caption": "Keep approved memory and reusable skills" },
+      { "file": "04-run-receipt.png", "caption": "Inspect every local run and its receipt" }
+    ]
+  }
+}

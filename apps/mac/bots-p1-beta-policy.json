@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "releaseArchitecture": "arm64",
+  "releaseTarget": "aarch64-apple-darwin",
+  "bundledModel": {
+    "id": "mlx-community/Qwen3-0.6B-4bit",
+    "revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+    "releaseValidatedMemoryGiB": [32]
+  },
+  "browserDataStore": "isolated-app-owned-per-bot",
+  "legacyWorkAccess": "export-only",
+  "starterTasks": [
+    "Inspect https://codelit.io and summarize what this product does using only visible page evidence.",
+    "Inspect this project and tell me the highest-impact next step.",
+    "Turn my goal into a small, verifiable plan."
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@codelit/mac",
+  "private": true,
+  "version": "0.1.1",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codelit-io/codelit-desktop.git",
+    "directory": "apps/mac"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && node scripts/check-renderer-bundle.mjs",
+    "check": "tsc --noEmit && vite build && node scripts/check-renderer-bundle.mjs",
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "client-only": "0.0.1",
+    "firebase": "^12.13.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "0.577.0",
+    "next": "^16.2.11",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "sonner": "^2.0.7",
+    "stripe": "^20.4.1",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "20.19.41",
+    "@types/react": "19.2.15",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.5",
+    "typescript": "5.9.3",
+    "vite": "8.2.1"
+  }
+}

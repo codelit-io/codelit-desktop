@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "externalBin": [
+      "binaries/codelit-mlx-helper",
+      "binaries/codelit-scheduler-helper"
+    ],
+    "macOS": {
+      "files": {
+        "Library/LaunchAgents/io.codelit.desktop.scheduler.plist": "../native/scheduler-helper/io.codelit.desktop.scheduler.plist"
+      }
+    }
+  }
+}

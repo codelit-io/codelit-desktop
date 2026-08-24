@@ -1,0 +1,64 @@
+[package]
+name = "codelit-mac"
+version = "0.1.1"
+description = "Local-first Codelit for macOS"
+authors = ["Codelit"]
+edition = "2024"
+default-run = "codelit-mac"
+license = "MPL-2.0"
+repository = "https://github.com/codelit-io/codelit-desktop"
+
+[features]
+default = []
+direct-release = ["dep:minisign-verify", "dep:tauri-plugin-updater", "tauri/tray-icon"]
+app-store-release = []
+release-tools = ["dep:minisign-verify"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "codelit_mac_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "verify-update-signature"
+path = "src/bin/verify_update_signature.rs"
+required-features = ["release-tools"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+aes-gcm = "0.10.3"
+base64 = "0.22.1"
+chrono = { version = "0.4.42", default-features = false, features = ["clock", "serde"] }
+chrono-tz = "0.10.4"
+getrandom = "0.3.4"
+libc = "0.2.177"
+core-foundation = "0.10.1"
+core-graphics = "0.25.0"
+minisign-verify = { version = "0.2.5", optional = true }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "rustls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+tauri = { version = "2.11.5", features = ["unstable"] }
+tauri-plugin-updater = { version = "2.10.1", optional = true }
+url = "2.5.8"
+wait-timeout = "0.2.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "NSApplication", "NSOpenPanel", "NSPanel", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSWindow", "NSWorkspace"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSData", "NSError", "NSObject", "NSProcessInfo", "NSString", "NSURL"] }
+objc2-service-management = { version = "0.3.2", default-features = false, features = ["std", "objc2", "objc2-foundation", "SMAppService"] }
+objc2-user-notifications = { version = "0.3.2", default-features = true }
+security-framework = { version = "3.7.0", features = ["OSX_10_15"] }
+
+[dev-dependencies]
+tempfile = "3.23.0"
