@@ -12,8 +12,11 @@ Included surfaces:
 - read-only user-selected project folders
 - compact local runtime and privacy settings
 
-The feasibility model is `mlx-community/Qwen3-0.6B-4bit`. Model files download
-into the app container on first use and are not committed to this repository.
+Provider Center offers Codelit's verified MLX models with explicit install,
+resume, repair, and device-check actions. It can also check recent public MLX
+Community models against the Mac's memory and disk capacity. Discovered models
+remain review-only until Codelit pins their files and verifies their behavior.
+Model files download into the app container and are not committed here.
 
 Provider Center keeps each billing and privacy boundary visible:
 

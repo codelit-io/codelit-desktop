@@ -2,19 +2,28 @@ import {
   CheckCircle2,
   Cpu,
   Download,
+  ExternalLink,
+  HardDrive,
   KeyRound,
   LoaderCircle,
   LogIn,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import type {
   ApiKeyProviderId,
+  LocalModelCandidate,
+  LocalModelDiscovery,
   ProviderCredentialStatus,
   ProviderModel,
   ProviderProbe,
 } from "../contracts";
-import { preferredOnDeviceSetupModel, preferredProviderModel } from "../bot-policy";
+import {
+  onDeviceModelSetupAction,
+  preferredOnDeviceSetupModel,
+  preferredProviderModel,
+} from "../bot-policy";
 
 type ProviderAction = void | Promise<void>;
 
@@ -33,7 +42,9 @@ export interface ProviderCenterProps {
   onDeleteApiKey: (provider: ApiKeyProviderId) => ProviderAction;
   onSignIn: (provider: ProviderProbe["id"]) => ProviderAction;
   onOpenSetup: (provider: ProviderProbe["id"]) => ProviderAction;
-  onSetupLocalModel: () => ProviderAction;
+  onSetupLocalModel: (model: ProviderModel) => ProviderAction;
+  onDiscoverLocalModels: () => Promise<LocalModelDiscovery>;
+  onOpenLocalModelPage: (modelId: string) => ProviderAction;
   onCancelLocalModelSetup: () => ProviderAction;
   setupState: ProviderCenterSetupState | null;
 }
@@ -255,25 +266,109 @@ function ApiKeyProviderRow({
   );
 }
 
+function formatBytes(bytes?: number) {
+  if (!bytes) return "Size unavailable";
+  const gib = bytes / (1024 ** 3);
+  return gib >= 1 ? `${gib.toFixed(gib >= 10 ? 0 : 1)} GB` : `${Math.ceil(bytes / (1024 ** 2))} MB`;
+}
+
+function candidateDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf())
+    ? "Recently updated"
+    : `Updated ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date)}`;
+}
+
+function modelStatus(model: ProviderModel) {
+  if (model.status === "ready") return "Ready";
+  if (model.status === "download-required") return "Not installed";
+  if (model.status === "partial") return "Setup paused";
+  if (model.status === "corrupt") return "Repair needed";
+  if (model.status === "benchmark-required") return "Needs a device check";
+  return "Does not fit this Mac";
+}
+
+function ManagedMlxProvider({
+  provider,
+  setupState,
+  onSetup,
+}: {
+  provider: ProviderProbe;
+  setupState: ProviderCenterSetupState | null;
+  onSetup: ProviderCenterProps["onSetupLocalModel"];
+}) {
+  const models = [...provider.models].sort((left, right) => (
+    Number(right.recommended) - Number(left.recommended)
+    || (left.downloadBytes || 0) - (right.downloadBytes || 0)
+  ));
+
+  return (
+    <div className="provider-center-managed" data-provider={provider.id}>
+      <div className="provider-center-managed-heading">
+        <div className="provider-center-provider-copy">
+          <div className="provider-center-provider-title">
+            <strong>{provider.label}</strong>
+            <ProviderBadge family="local" />
+          </div>
+          <span className={`provider-center-readiness ${provider.canRun ? "ready" : "attention"}`}>
+            {provider.canRun ? <CheckCircle2 size={13} aria-hidden="true" /> : <Cpu size={13} aria-hidden="true" />}
+            {provider.canRun ? "At least one verified model is ready." : "Choose a verified model for this Mac."}
+          </span>
+        </div>
+      </div>
+      <div className="provider-center-model-list">
+        {models.length > 0 ? models.map((model) => {
+          const action = onDeviceModelSetupAction(model);
+          return (
+            <article className="provider-center-model-row" key={model.id} data-model-status={model.status}>
+              <div className="provider-center-model-copy">
+                <div className="provider-center-model-title">
+                  <strong>{model.label}</strong>
+                  {model.recommended ? <span className="provider-center-model-tag">Best match</span> : null}
+                  {model.status === "ready" ? <span className="provider-center-model-tag ready">Ready</span> : null}
+                </div>
+                <span>{formatBytes(model.downloadBytes)} · {model.license || "License unavailable"}</span>
+                <p>{model.detail}</p>
+              </div>
+              {action ? (
+                <button
+                  className="provider-center-action provider-local-setup"
+                  type="button"
+                  disabled={setupState !== null}
+                  onClick={() => void onSetup(model)}
+                  aria-label={`${action.label} ${model.label}`}
+                >
+                  {setupState
+                    ? <LoaderCircle className="provider-center-spinner" size={14} aria-hidden="true" />
+                    : action.action === "benchmark"
+                      ? <Cpu size={14} aria-hidden="true" />
+                      : action.action === "update"
+                        ? <RefreshCw size={14} aria-hidden="true" />
+                        : <Download size={14} aria-hidden="true" />}
+                  {action.label}
+                </button>
+              ) : (
+                <span className={`provider-center-model-state ${model.status}`}>{modelStatus(model)}</span>
+              )}
+            </article>
+          );
+        }) : <p className="provider-center-empty">Verified model choices appear in the native app.</p>}
+      </div>
+    </div>
+  );
+}
+
 function LocalProviderRow({
   provider,
-  setup,
-  setupState,
   busy,
-  onSetup,
   onOpenSetup,
 }: {
   provider: ProviderProbe;
-  setup: ManagedLocalSetup | null;
-  setupState: ProviderCenterSetupState | null;
   busy: boolean;
-  onSetup: ProviderCenterProps["onSetupLocalModel"];
   onOpenSetup: ProviderCenterProps["onOpenSetup"];
 }) {
   const model = preferredProviderModel(provider);
-  const managedSetup = provider.id === "mlx" ? setup : null;
   const canOpenSetup = !provider.canRun
-    && provider.id !== "mlx"
     && provider.distribution !== "unsupported"
     && (
       provider.status === "not-installed"
@@ -293,18 +388,7 @@ function LocalProviderRow({
           {model ? `${model.label} · ` : ""}{localProviderSummary(provider)}
         </span>
       </div>
-      {managedSetup ? (
-        <button
-          className="provider-center-action provider-local-setup"
-          type="button"
-          disabled={setupState !== null}
-          onClick={() => void onSetup()}
-          aria-label={`${managedSetup.label} for ${managedSetup.model.label}`}
-        >
-          <Download size={14} aria-hidden="true" />
-          {managedSetup.label}
-        </button>
-      ) : canOpenSetup ? (
+      {canOpenSetup ? (
         <button
           className="provider-center-action provider-local-setup"
           type="button"
@@ -322,6 +406,39 @@ function LocalProviderRow({
   );
 }
 
+function LiveModelCandidate({
+  candidate,
+  onOpen,
+}: {
+  candidate: LocalModelCandidate;
+  onOpen: ProviderCenterProps["onOpenLocalModelPage"];
+}) {
+  const fitLabel = candidate.fit === "fits"
+    ? "Fits this Mac"
+    : candidate.fit === "memory" ? "Needs more memory" : "Needs more space";
+  return (
+    <article className="provider-center-candidate">
+      <div className="provider-center-model-copy">
+        <div className="provider-center-model-title">
+          <strong>{candidate.label}</strong>
+          <span className={`provider-center-model-tag ${candidate.fit}`}>{fitLabel}</span>
+        </div>
+        <span>{formatBytes(candidate.downloadBytes)} · {candidate.license} · {candidateDate(candidate.lastModified)}</span>
+        <p>{candidate.detail}</p>
+      </div>
+      <button
+        className="provider-center-action"
+        type="button"
+        onClick={() => void onOpen(candidate.id)}
+        aria-label={`Review ${candidate.label} on Hugging Face`}
+      >
+        <ExternalLink size={14} aria-hidden="true" />
+        Review
+      </button>
+    </article>
+  );
+}
+
 export default function ProviderCenter({
   providers,
   credentials,
@@ -333,13 +450,32 @@ export default function ProviderCenter({
   onSignIn,
   onOpenSetup,
   onSetupLocalModel,
+  onDiscoverLocalModels,
+  onOpenLocalModelPage,
   onCancelLocalModelSetup,
   setupState,
 }: ProviderCenterProps) {
   const [view, setView] = useState<ProviderCenterView>("local");
+  const [discovery, setDiscovery] = useState<LocalModelDiscovery | null>(null);
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const subscriptions = providers.filter((provider) => provider.family === "subscription");
   const localProviders = providers.filter((provider) => provider.family === "local");
-  const localSetup = managedLocalSetup(localProviders);
+  const mlxProvider = localProviders.find((provider) => provider.id === "mlx");
+  const externalLocalProviders = localProviders.filter((provider) => provider.id !== "mlx");
+
+  const discoverModels = async () => {
+    if (discoveryBusy) return;
+    setDiscoveryBusy(true);
+    setDiscoveryError(null);
+    try {
+      setDiscovery(await onDiscoverLocalModels());
+    } catch (reason) {
+      setDiscoveryError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setDiscoveryBusy(false);
+    }
+  };
 
   return (
     <div className="provider-center" aria-label="Provider Center">
@@ -417,19 +553,62 @@ export default function ProviderCenter({
             </div>
           ) : null}
           <div className="provider-center-list">
-            {localProviders.length > 0 ? localProviders.map((provider) => (
+            {mlxProvider ? (
+              <ManagedMlxProvider
+                provider={mlxProvider}
+                setupState={setupState}
+                onSetup={onSetupLocalModel}
+              />
+            ) : null}
+            {externalLocalProviders.map((provider) => (
               <LocalProviderRow
                 key={provider.id}
                 provider={provider}
-                setup={localSetup}
-                setupState={setupState}
                 busy={busyProviderId === provider.id}
-                onSetup={onSetupLocalModel}
                 onOpenSetup={onOpenSetup}
               />
-            )) : (
+            ))}
+            {localProviders.length === 0 ? (
               <p className="provider-center-empty">No on-device provider is available in this build.</p>
-            )}
+            ) : null}
+          </div>
+          <div className="provider-center-discovery">
+            <div className="provider-center-discovery-heading">
+              <div>
+                <strong>New local models</strong>
+                <p>Check recent MLX models against this Mac. Nothing downloads automatically.</p>
+              </div>
+              <button
+                className="provider-center-action"
+                type="button"
+                disabled={discoveryBusy || setupState !== null}
+                onClick={() => void discoverModels()}
+              >
+                {discoveryBusy
+                  ? <LoaderCircle className="provider-center-spinner" size={14} aria-hidden="true" />
+                  : <RefreshCw size={14} aria-hidden="true" />}
+                {discoveryBusy ? "Checking" : discovery ? "Check again" : "Check new models"}
+              </button>
+            </div>
+            {discoveryError ? <p className="provider-center-discovery-error" role="alert">{discoveryError}</p> : null}
+            {discovery ? (
+              <div className="provider-center-candidate-list">
+                <div className="provider-center-machine-fit">
+                  <HardDrive size={14} aria-hidden="true" />
+                  <span>{formatBytes(discovery.memoryBytes)} memory · {formatBytes(discovery.freeDiskBytes)} free</span>
+                </div>
+                {discovery.candidates.length > 0 ? discovery.candidates.map((candidate) => (
+                  <LiveModelCandidate
+                    key={`${candidate.id}@${candidate.revision}`}
+                    candidate={candidate}
+                    onOpen={onOpenLocalModelPage}
+                  />
+                )) : <p className="provider-center-empty">No recent compatible models passed Codelit’s safety filters.</p>}
+                <p className="provider-center-discovery-boundary">
+                  Discovery only. Codelit will not install or run these models until they pass release verification.
+                </p>
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}

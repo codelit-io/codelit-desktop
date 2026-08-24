@@ -540,6 +540,11 @@ impl MachineResources {
     }
 }
 
+pub(crate) fn machine_capacity(app_data_dir: &Path) -> (u64, u64) {
+    let resources = MachineResources::read(app_data_dir);
+    (resources.memory_bytes, resources.free_disk_bytes)
+}
+
 fn unified_memory_bytes() -> Option<u64> {
     let output = Command::new("/usr/sbin/sysctl")
         .args(["-n", "hw.memsize"])

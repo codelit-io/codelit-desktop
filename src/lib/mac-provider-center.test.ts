@@ -145,4 +145,14 @@ describe("Mac Provider Center", () => {
     expect(source).toContain("onCancelLocalModelSetup");
     expect(source).toContain("onSignIn(provider.id)");
   });
+
+  it("makes verified setup explicit and keeps live discovery review-only", () => {
+    expect(source).toContain("onDeviceModelSetupAction(model)");
+    expect(source).toContain("onSetup(model)");
+    expect(source).toContain("Check new models");
+    expect(source).toContain("Nothing downloads automatically");
+    expect(source).toContain("Fits this Mac");
+    expect(source).toContain("Codelit will not install or run these models until they pass release verification");
+    expect(source).toContain("onOpen(candidate.id)");
+  });
 });

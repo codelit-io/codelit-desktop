@@ -7,6 +7,7 @@ import {
   botBrowserDomainMatches,
   botProvidersForChannel,
   isBotBrowserSessionOpen,
+  onDeviceModelSetupAction,
   onDeviceSetupAction,
   parseBotBrowserAction,
   parseBotBrowserTarget,
@@ -137,7 +138,7 @@ describe("Codelit Bots provider policy", () => {
     expect(preferredOnDeviceSetupModel(mlx)?.id).toBe("capable");
     expect(onDeviceSetupAction([mlx], "development")).toMatchObject({
       model: { id: "capable" },
-      label: "Set up on-device",
+      label: "Install",
     });
   });
 
@@ -210,6 +211,15 @@ describe("Codelit Bots provider policy", () => {
     expect(onDeviceSetupAction([provider("mlx", "partial")], "direct")?.action).toBe("resume");
     expect(onDeviceSetupAction([provider("mlx", "corrupt")], "direct")?.action).toBe("update");
     expect(onDeviceSetupAction([provider("mlx", "benchmark-required")], "direct")?.action).toBe("benchmark");
+    expect(onDeviceModelSetupAction(model("ready"))).toBeNull();
+    expect(onDeviceModelSetupAction(model("download-required"))?.label).toBe("Install");
+    expect(onDeviceModelSetupAction(model("partial"))?.label).toBe("Resume");
+    expect(onDeviceModelSetupAction(model("corrupt"))?.label).toBe("Repair");
+    expect(onDeviceModelSetupAction(model("incompatible"))).toBeNull();
+    expect(onDeviceModelSetupAction({
+      ...model("incompatible"),
+      installedBytes: 512,
+    })?.label).toBe("Recheck");
   });
 
   it("extracts one safe public or localhost browser target from chat", () => {

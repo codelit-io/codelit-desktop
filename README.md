@@ -11,7 +11,8 @@ deployment configuration, and cloud backend are not included.
 ## What is included
 
 - Persistent local bots and conversations
-- Built-in on-device MLX inference
+- Built-in on-device MLX inference with per-model install, resume, repair, and device checks
+- Opt-in discovery of recent MLX Community models filtered for this Mac
 - User-selected Codex, Copilot, Ollama, LM Studio, OpenAI, Anthropic, and Gemini
   providers, subject to each provider's own terms and availability
 - Read-only access to explicitly selected project folders
@@ -19,9 +20,10 @@ deployment configuration, and cloud backend are not included.
 - Local goals, memories, skills, tables, schedules, handoffs, and receipts
 - Separate Direct and Mac App Store capability profiles
 
-The built-in model is downloaded on first use. Model weights, signing
-certificates, provider credentials, and Apple credentials are never stored in
-this repository.
+Codelit's verified models are pinned by revision and checksum before they can
+be installed or executed. Live discovery is review-only until a model passes
+the same release verification. Model weights, signing certificates, provider
+credentials, and Apple credentials are never stored in this repository.
 
 ## Requirements
 

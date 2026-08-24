@@ -1266,6 +1266,29 @@ export interface ProviderModel {
   benchmark?: ModelBenchmark;
 }
 
+export interface LocalModelCandidate {
+  id: string;
+  label: string;
+  revision: string;
+  lastModified: string;
+  downloads: number;
+  likes: number;
+  downloadBytes: number;
+  requiredMemoryBytes: number;
+  license: string;
+  modelType: string;
+  fit: "fits" | "memory" | "disk";
+  detail: string;
+}
+
+export interface LocalModelDiscovery {
+  fetchedAt: string;
+  source: string;
+  memoryBytes: number;
+  freeDiskBytes: number;
+  candidates: LocalModelCandidate[];
+}
+
 export interface ModelBenchmark {
   schemaVersion: number;
   model: string;

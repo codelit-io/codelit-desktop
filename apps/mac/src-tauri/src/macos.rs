@@ -434,6 +434,27 @@ mod platform {
         Ok(())
     }
 
+    pub fn open_hugging_face_model_page(url: &str) -> Result<(), String> {
+        let parsed =
+            url::Url::parse(url).map_err(|_| "The local model page is invalid.".to_string())?;
+        if parsed.scheme() != "https"
+            || parsed.host_str() != Some("huggingface.co")
+            || parsed.port().is_some()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || !parsed.path().starts_with("/mlx-community/")
+        {
+            return Err("The local model page is not trusted.".into());
+        }
+        let string = NSString::from_str(parsed.as_str());
+        let ns_url = NSURL::URLWithString(&string)
+            .ok_or_else(|| "The local model page is invalid.".to_string())?;
+        if !NSWorkspace::sharedWorkspace().openURL(&ns_url) {
+            return Err("macOS could not open the local model page.".into());
+        }
+        Ok(())
+    }
+
     fn generate_data_key() -> Result<[u8; DATA_KEY_BYTES], String> {
         let mut key = [0_u8; DATA_KEY_BYTES];
         getrandom::fill(&mut key)
@@ -1137,6 +1158,10 @@ mod platform {
     pub fn open_external_https(_url: &str) -> Result<(), String> {
         Err("Opening Codelit Cloud is available only on macOS.".into())
     }
+
+    pub fn open_hugging_face_model_page(_url: &str) -> Result<(), String> {
+        Err("Opening local model pages is available only on macOS.".into())
+    }
 }
 
 pub use platform::{
@@ -1144,9 +1169,9 @@ pub use platform::{
     choose_workspace_folder, computer_environment, continuous_time_nanos, delete_cloud_credential,
     list_running_applications, load_cloud_credential, load_or_create_data_key,
     open_accessibility_settings, open_background_service_settings, open_external_https,
-    open_skill_package, open_workspace_archive, probe_background_service, release_browser_download,
-    replace_data_key, request_screen_capture_permission, resolve_workspace_bookmark,
-    save_bot_table_csv, save_pilot_report, save_workspace_archive,
-    screen_capture_permission_granted, set_background_service_enabled, store_cloud_credential,
-    with_workspace_folder_access,
+    open_hugging_face_model_page, open_skill_package, open_workspace_archive,
+    probe_background_service, release_browser_download, replace_data_key,
+    request_screen_capture_permission, resolve_workspace_bookmark, save_bot_table_csv,
+    save_pilot_report, save_workspace_archive, screen_capture_permission_granted,
+    set_background_service_enabled, store_cloud_credential, with_workspace_folder_access,
 };

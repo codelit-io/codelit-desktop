@@ -15,6 +15,7 @@ mod local_browser;
 mod local_mcp;
 mod local_notifications;
 mod macos;
+mod model_discovery;
 mod model_manager;
 mod ollama;
 mod pilot_metrics;
@@ -68,6 +69,7 @@ use local_mcp::{
 };
 use local_notifications::{LocalNotificationRoute, ShowLocalNotificationRequest};
 use macos::BackgroundServiceProbe;
+use model_discovery::LocalModelDiscovery;
 use pilot_metrics::LocalPilotReport;
 use provider_credentials::{
     ByokProvider, ProviderCredentialRef, ProviderCredentialStatus, ProviderCredentialStore,
@@ -1410,6 +1412,22 @@ async fn probe_providers(state: State<'_, AppState>) -> Result<Vec<ProviderProbe
         .map_err(|error| format!("Provider discovery worker stopped unexpectedly: {error}"))
 }
 
+#[tauri::command]
+async fn discover_local_models(state: State<'_, AppState>) -> Result<LocalModelDiscovery, String> {
+    let app_data_dir = state.app_data_dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        model_discovery::discover_local_models(&app_data_dir)
+    })
+    .await
+    .map_err(|error| format!("Local model discovery worker stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+fn open_local_model_page(model_id: String) -> Result<(), String> {
+    let url = model_discovery::model_page_url(model_id.trim())?;
+    macos::open_hugging_face_model_page(url.as_str())
+}
+
 fn provider_credential_reference(provider: ByokProvider) -> Result<ProviderCredentialRef, String> {
     ProviderCredentialRef::new(provider, DEFAULT_PROVIDER_CREDENTIAL_ACCOUNT)
         .map_err(|error| error.to_string())
@@ -1758,6 +1776,8 @@ pub fn run() {
             record_local_check,
             store_artifact_file,
             probe_providers,
+            discover_local_models,
+            open_local_model_page,
             probe_provider_api_keys,
             save_provider_api_key,
             delete_provider_api_key,

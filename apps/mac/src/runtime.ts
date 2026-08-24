@@ -57,6 +57,7 @@ import type {
   LocalMcpInspection,
   LocalMcpServer,
   LocalMcpServerDraft,
+  LocalModelDiscovery,
   LocalNotificationRoute,
   LocalProjectFingerprint,
   LocalPilotReport,
@@ -3478,4 +3479,18 @@ export async function manageLocalModel(
     onEvent: eventChannel,
   });
   return { runId, model: updated };
+}
+
+export async function discoverLocalModels(): Promise<LocalModelDiscovery> {
+  if (!isNativeRuntime()) {
+    throw new Error("Live local model discovery is available only inside Codelit for Mac.");
+  }
+  return invoke<LocalModelDiscovery>("discover_local_models");
+}
+
+export async function openLocalModelPage(modelId: string): Promise<void> {
+  if (!isNativeRuntime()) {
+    throw new Error("Local model pages open only inside Codelit for Mac.");
+  }
+  await invoke("open_local_model_page", { modelId });
 }

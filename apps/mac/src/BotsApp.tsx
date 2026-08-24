@@ -65,6 +65,7 @@ import type {
   LocalMcpServer,
   LocalPilotReport,
   LocalSchedule,
+  ProviderModel,
   ProviderProbe,
   ProviderCredentialStatus,
   ProviderRunEvent,
@@ -136,6 +137,7 @@ import {
   botProvidersForChannel,
   isBotBrowserSessionOpen,
   isBotEngineReady,
+  onDeviceModelSetupAction,
   onDeviceSetupAction,
   parseBotBrowserAction,
   parseBotBrowserTarget,
@@ -226,10 +228,12 @@ import {
   listenForLocalBrowserEvents,
   localRunCapacityDetail,
   manageLocalModel,
+  discoverLocalModels,
   markEventRoutineOccurrenceRunning,
   markScheduleOccurrenceRunning,
   openBackgroundWorkSettings,
   openLocalBotContext,
+  openLocalModelPage,
   openLocalBotTable,
   deleteProviderApiKey,
   openCodexSignIn,
@@ -2079,26 +2083,27 @@ export default function BotsApp() {
     }
   };
 
-  const setupOnDevice = async () => {
-    if (!setupAction || modelSetup) {
-      if (!setupAction) openSettings("intelligence");
+  const setupOnDevice = async (selectedModel?: ProviderModel) => {
+    const action = selectedModel ? onDeviceModelSetupAction(selectedModel) : setupAction;
+    if (!action || modelSetup) {
+      if (!action) openSettings("intelligence");
       return;
     }
     setGlobalError(null);
     setGlobalNotice(null);
-    setModelSetup({ message: `${setupAction.label}...` });
+    setModelSetup({ message: `${action.label}...` });
     try {
       const { model } = await manageLocalModel(
-        setupAction.provider,
-        setupAction.model.id,
-        setupAction.action,
+        action.provider,
+        action.model.id,
+        action.action,
         (event) => setModelSetup((current) => ({
           runId: current?.runId,
           message: event.message,
         })),
         (runId) => setModelSetup((current) => ({
           runId,
-          message: current?.message || `${setupAction.label}...`,
+          message: current?.message || `${action.label}...`,
         })),
       );
       const nextProviders = await probeLocalProviders();
@@ -7981,6 +7986,8 @@ export default function BotsApp() {
                         onSignIn={startProviderSignIn}
                         onOpenSetup={startProviderSetup}
                         onSetupLocalModel={setupOnDevice}
+                        onDiscoverLocalModels={discoverLocalModels}
+                        onOpenLocalModelPage={openLocalModelPage}
                         onCancelLocalModelSetup={cancelModelSetup}
                         setupState={modelSetup}
                       />

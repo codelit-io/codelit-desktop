@@ -281,6 +281,25 @@ export interface OnDeviceSetupAction {
   label: string;
 }
 
+export function onDeviceModelSetupAction(model: ProviderModel): OnDeviceSetupAction | null {
+  if (model.status === "ready") return null;
+  if (model.status === "partial") {
+    return { provider: "mlx", model, action: "resume", label: "Resume" };
+  }
+  if (model.status === "corrupt") {
+    return { provider: "mlx", model, action: "update", label: "Repair" };
+  }
+  if (model.status === "benchmark-required") {
+    return { provider: "mlx", model, action: "benchmark", label: "Check this Mac" };
+  }
+  if (model.status === "incompatible") {
+    return model.installedBytes
+      ? { provider: "mlx", model, action: "benchmark", label: "Recheck" }
+      : null;
+  }
+  return { provider: "mlx", model, action: "download", label: "Install" };
+}
+
 export type BotBrowserTargetResult =
   | { kind: "none" }
   | { kind: "invalid"; message: string }
@@ -413,11 +432,5 @@ export function onDeviceSetupAction(
 ): OnDeviceSetupAction | null {
   const mlx = botProvidersForChannel(providers, channel).find((provider) => provider.id === "mlx");
   const model = mlx ? preferredOnDeviceSetupModel(mlx) : undefined;
-  if (!model) return null;
-  if (model.status === "partial") return { provider: "mlx", model, action: "resume", label: "Resume setup" };
-  if (model.status === "corrupt") return { provider: "mlx", model, action: "update", label: "Repair on-device" };
-  if (model.status === "benchmark-required" || model.status === "incompatible") {
-    return { provider: "mlx", model, action: "benchmark", label: "Check this Mac" };
-  }
-  return { provider: "mlx", model, action: "download", label: "Set up on-device" };
+  return model ? onDeviceModelSetupAction(model) : null;
 }
