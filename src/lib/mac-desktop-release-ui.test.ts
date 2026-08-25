@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { releaseCapabilityIssues } from "../../apps/mac/scripts/release-support.mjs";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+const packageJson = JSON.parse(read("../../package.json"));
 const app = read("../../apps/mac/src/App.tsx");
 const updates = read("../../apps/mac/src/components/DesktopUpdateSettings.tsx");
 const runtime = read("../../apps/mac/src/runtime.ts");
@@ -23,6 +24,25 @@ const localReliabilityRunbook = read("../../apps/mac/LOCAL_RELIABILITY_QA.md");
 const appStoreDelivery = read("../../apps/mac/scripts/submit-app-store-build.mjs");
 
 describe("Codelit for Mac release channels", () => {
+  it("keeps every documented desktop release and qualification command callable", () => {
+    expect(packageJson.scripts).toMatchObject({
+      "desktop:release:direct": "node apps/mac/scripts/build-desktop-release.mjs --channel direct",
+      "desktop:release:app-store": "node apps/mac/scripts/build-desktop-release.mjs --channel app-store",
+      "desktop:qa:candidate:draft": "node apps/mac/scripts/create-desktop-candidate-qa.mjs",
+      "desktop:qa:candidate:check": "node apps/mac/scripts/check-desktop-candidate-qa.mjs",
+      "desktop:qa:p1:record": "node apps/mac/scripts/record-desktop-p1-journey.mjs",
+      "desktop:qa:p1:check": "node apps/mac/scripts/check-desktop-p1-journey.mjs",
+      "desktop:qa:computer:draft": "node apps/mac/scripts/create-desktop-computer-lifecycle-observations.mjs",
+      "desktop:qa:computer:record": "node apps/mac/scripts/record-desktop-computer-lifecycle.mjs",
+      "desktop:qa:computer:check": "node apps/mac/scripts/check-desktop-computer-lifecycle.mjs",
+      "desktop:qa:reliability:draft": "node apps/mac/scripts/create-desktop-local-reliability-observations.mjs",
+      "desktop:qa:reliability:record": "node apps/mac/scripts/record-desktop-local-reliability.mjs",
+      "desktop:qa:reliability:check": "node apps/mac/scripts/check-desktop-local-reliability.mjs",
+      "desktop:app-store:validate": "node apps/mac/scripts/submit-app-store-build.mjs",
+      "desktop:app-store:upload": "node apps/mac/scripts/submit-app-store-build.mjs --upload",
+    });
+  });
+
   it("keeps Direct updates signed and App Store updates Apple-managed", () => {
     expect(directConfig.bundle.createUpdaterArtifacts).toBe(true);
     expect(directConfig.plugins.updater.pubkey).toMatch(/^[A-Za-z0-9+/=]+$/);
