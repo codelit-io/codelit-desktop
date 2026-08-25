@@ -197,7 +197,19 @@ function mcpPending(botId: string, runId: string): PendingMcpRun {
 
 describe("Mac bot parallel execution state", () => {
   it("restores only an exact typed MCP approval", () => {
-    const pending = mcpPending("bot-mcp", "run-mcp");
+    const pending = {
+      ...mcpPending("bot-mcp", "run-mcp"),
+      harnessCheckpoint: {
+        schemaVersion: 1 as const,
+        observations: ["Reviewed connection registry"],
+        completedTools: [{ toolId: "local-connections", toolName: "Local connections" }],
+        toolCalls: ["list_connected_tools" as const],
+        mcpCalls: [],
+        actionCount: 1,
+        modelTurns: 2,
+        recoveryAttempts: 0,
+      },
+    };
     const approval = {
       id: pending.approvalId,
       runId: pending.runId,
@@ -223,6 +235,13 @@ describe("Mac bot parallel execution state", () => {
     const withoutMemoryHash: Record<string, unknown> = { ...approval.body };
     delete withoutMemoryHash.memorySnapshotHash;
     expect(pendingMcpRunFromApproval({ ...approval, body: withoutMemoryHash })).toBeNull();
+    expect(pendingMcpRunFromApproval({
+      ...approval,
+      body: {
+        ...approval.body,
+        harnessCheckpoint: { ...pending.harnessCheckpoint, actionCount: 0 },
+      },
+    })).toBeNull();
   });
 
   it("isolates a pending MCP approval from another bot's run", () => {

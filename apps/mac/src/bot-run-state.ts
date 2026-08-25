@@ -15,6 +15,10 @@ import {
   reduceProviderLiveState,
   type ProviderLiveState,
 } from "./provider-run-live";
+import {
+  normalizeAgenticHarnessCheckpoint,
+  type AgenticHarnessCheckpoint,
+} from "./agentic-harness-checkpoint";
 
 export type BotRunState = "idle" | "running" | "awaiting-approval" | "canceling" | "saving";
 
@@ -95,6 +99,7 @@ export interface PendingMcpRun {
   memorySnapshotHash: string;
   skills: BotSkill[];
   skillVersions: Record<string, number>;
+  harnessCheckpoint?: AgenticHarnessCheckpoint;
 }
 
 export interface BotExecutionState {
@@ -166,6 +171,9 @@ export function pendingMcpRunFromApproval(approval: LocalRunApproval): PendingMc
   const preview = Array.isArray(approval.body.preview)
     ? approval.body.preview.filter((line): line is string => typeof line === "string")
     : [];
+  const harnessCheckpoint = approval.body.harnessCheckpoint === undefined
+    ? undefined
+    : normalizeAgenticHarnessCheckpoint(approval.body.harnessCheckpoint);
   if (!isRecord(engine)
     || !isProviderId(engine.provider)
     || typeof engine.model !== "string"
@@ -220,6 +228,7 @@ export function pendingMcpRunFromApproval(approval: LocalRunApproval): PendingMc
     || skills.length !== rawSkills.length
     || Object.keys(skillVersions).length !== skills.length
     || !skills.every((skill) => skillVersions[skill.id] === skill.version)) return null;
+  if (approval.body.harnessCheckpoint !== undefined && !harnessCheckpoint) return null;
   return {
     approvalId: approval.id,
     runId: approval.runId,
@@ -248,6 +257,7 @@ export function pendingMcpRunFromApproval(approval: LocalRunApproval): PendingMc
     memorySnapshotHash: approval.body.memorySnapshotHash,
     skills,
     skillVersions,
+    ...(harnessCheckpoint ? { harnessCheckpoint } : {}),
   };
 }
 

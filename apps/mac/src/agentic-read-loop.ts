@@ -1,24 +1,33 @@
 import type { ProviderTaskResult } from "./contracts";
 import { formatProviderFinalAnswer, PROVIDER_FINAL_OUTPUT_LIMITS } from "./provider-run-live";
+import {
+  AGENTIC_READ_TOOLS,
+  MAX_HARNESS_ACTIONS,
+  MAX_HARNESS_MODEL_TURNS,
+  MAX_RECOVERY_ATTEMPTS,
+  boundedHarnessCompletedTools,
+  boundedHarnessObservations,
+  emptyAgenticHarnessCheckpoint,
+  normalizeAgenticHarnessCheckpoint,
+  type AgenticHarnessCheckpoint,
+  type AgenticReadTool,
+  type AgenticReadToolResult,
+} from "./agentic-harness-checkpoint";
 
-export const AGENTIC_READ_TOOLS = [
-  "read_project_overview",
-  "list_selected_folder",
-  "list_local_tables",
-  "list_local_routines",
-  "list_connected_tools",
-] as const;
-
-export type AgenticReadTool = typeof AGENTIC_READ_TOOLS[number];
+export {
+  AGENTIC_READ_TOOLS,
+  normalizeAgenticHarnessCheckpoint,
+  resumeAgenticHarnessCheckpoint,
+} from "./agentic-harness-checkpoint";
+export type {
+  AgenticHarnessCheckpoint,
+  AgenticReadTool,
+  AgenticReadToolResult,
+} from "./agentic-harness-checkpoint";
 
 export interface AgenticReadToolDefinition {
   name: AgenticReadTool;
   description: string;
-}
-
-export interface AgenticReadToolResult {
-  context: string[];
-  completedTools: Array<{ toolId: string; toolName: string }>;
 }
 
 export interface AgenticMcpToolDefinition {
@@ -43,6 +52,7 @@ export interface AgenticReadLoopResult {
   modelTurns: number;
   toolCalls: AgenticReadTool[];
   mcpProposal?: AgenticMcpProposal;
+  checkpoint: AgenticHarnessCheckpoint;
 }
 
 type AgenticDecision =
@@ -54,7 +64,6 @@ type AgenticDecision =
 
 const ACTION_PREFIX = "ACTION:";
 const MAX_PROMPT_CHARS = 7_800;
-const MAX_OBSERVATION_CHARS = 3_600;
 const MAX_RECORDED_EVIDENCE = 16;
 const MCP_ARGUMENTS_PREFIX = "ARGUMENTS:";
 const MAX_MCP_ARGUMENT_CHARS = 32_000;
@@ -176,16 +185,6 @@ export function parseAgenticDecision(
   return { kind: "invalid", message: `The model returned unsupported action ${action || "unknown"}.` };
 }
 
-function boundedObservations(observations: string[]) {
-  let remaining = MAX_OBSERVATION_CHARS;
-  return observations.flatMap((observation) => {
-    if (remaining <= 0) return [];
-    const bounded = observation.slice(0, remaining);
-    remaining -= bounded.length;
-    return bounded ? [bounded] : [];
-  });
-}
-
 function compactMcpSchema(value: unknown, depth = 0): unknown {
   if (depth > 5 || !value || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.slice(0, 20).map((item) => compactMcpSchema(item, depth + 1));
@@ -219,8 +218,10 @@ export function buildAgenticTurnPrompt(input: {
   observations: string[];
   mcpTools?: AgenticMcpToolDefinition[];
   forceAnswer?: boolean;
+  actionsUsed?: number;
+  maxActions?: number;
 }) {
-  const observations = boundedObservations(input.observations);
+  const observations = boundedHarnessObservations(input.observations);
   const availableActions = input.forceAnswer
     ? ["- ACTION:answer", "- ACTION:blocked"]
     : [
@@ -232,10 +233,12 @@ export function buildAgenticTurnPrompt(input: {
   const controller = [
     "You are operating inside Codelit's bounded local agent loop.",
     "Choose exactly one next action. Never invent a tool, path, file, website, app, account, or tool result.",
+    `This run has used ${input.actionsUsed || 0} of ${input.maxActions || 0} bounded actions. Continue from supplied results instead of restarting completed work.`,
     "If the user asks for a fact about the approved folder or codebase and no relevant tool result is supplied, you must choose a read tool and must not answer yet.",
     "Before claiming that a local table, routine, connection, service, or approved tool exists or is unavailable, you must use its matching list tool when that tool is available and no relevant result is supplied.",
     "When the user asks to connect or use an account, inspect the reviewed connection registry first. Never imply that listing a connection invokes it.",
     "Choose an MCP action only when it directly advances the current request. MCP calls never run immediately: Codelit will show the exact call for user approval.",
+    "After an approved action, inspect its returned result and continue with another bounded action only when needed. Never repeat a completed external action.",
     `For an MCP action, the second item must be exactly ${MCP_ARGUMENTS_PREFIX}{\"field\":\"typed value\"} using only fields and types from that tool's input schema. Do not put credentials in arguments.`,
     'Return exactly one JSON object matching {"summary":"short progress or complete answer","items":["ACTION:value"]}.',
     "The first item in the required items array must be exactly one of the ACTION values below.",
@@ -288,31 +291,62 @@ export async function runAgenticReadLoop(input: {
   tools: AgenticReadToolDefinition[];
   maxToolCalls: number;
   mcpTools?: AgenticMcpToolDefinition[];
+  checkpoint?: AgenticHarnessCheckpoint;
   invoke: (prompt: string, turn: number) => Promise<ProviderTaskResult>;
   execute: (tool: AgenticReadTool) => Promise<AgenticReadToolResult>;
 }): Promise<AgenticReadLoopResult> {
-  const available = new Map(input.tools.map((tool) => [tool.name, tool]));
-  const observations: string[] = [];
+  const restored = input.checkpoint
+    ? normalizeAgenticHarnessCheckpoint(input.checkpoint)
+    : emptyAgenticHarnessCheckpoint();
+  if (!restored) throw new Error("The saved agent checkpoint is invalid.");
+  const available = new Map(input.tools
+    .filter((tool) => !restored.toolCalls.includes(tool.name))
+    .map((tool) => [tool.name, tool]));
+  const availableMcpTools = (input.mcpTools || [])
+    .filter((tool) => !restored.mcpCalls.includes(tool.reference));
+  const observations = [...restored.observations];
   const results: ProviderTaskResult[] = [];
-  const completedTools: AgenticReadToolResult["completedTools"] = [];
-  const toolCalls: AgenticReadTool[] = [];
-  const maxToolCalls = Math.max(0, Math.min(2, Math.floor(input.maxToolCalls)));
-  const maxModelTurns = maxToolCalls + 2;
-  let forceAnswer = false;
+  const completedTools = [...restored.completedTools];
+  const toolCalls = [...restored.toolCalls];
+  const mcpCalls = [...restored.mcpCalls];
+  const maxActions = Math.max(0, Math.min(MAX_HARNESS_ACTIONS, Math.floor(input.maxToolCalls)));
+  const remainingActions = Math.max(0, maxActions - restored.actionCount);
+  const maxModelTurns = Math.min(MAX_HARNESS_MODEL_TURNS - restored.modelTurns, Math.max(2, remainingActions + 3));
+  let actionCount = restored.actionCount;
+  let modelTurns = restored.modelTurns;
+  let recoveryAttempts = restored.recoveryAttempts;
+  let forceAnswer = actionCount >= maxActions || (available.size === 0 && availableMcpTools.length === 0);
+
+  const checkpoint = (): AgenticHarnessCheckpoint => ({
+    schemaVersion: 1,
+    observations: boundedHarnessObservations(observations),
+    completedTools: boundedHarnessCompletedTools(completedTools),
+    toolCalls: [...toolCalls],
+    mcpCalls: [...mcpCalls],
+    actionCount,
+    modelTurns,
+    recoveryAttempts,
+  });
 
   const executeTool = async (tool: AgenticReadTool) => {
-    const toolResult = await input.execute(tool);
     toolCalls.push(tool);
+    actionCount += 1;
     available.delete(tool);
-    completedTools.push(...toolResult.completedTools);
-    observations.push(...(toolResult.context.length
-      ? toolResult.context
-      : [`Tool ${tool} returned no readable content.`]));
-    forceAnswer = toolCalls.length >= maxToolCalls || available.size === 0;
+    try {
+      const toolResult = await input.execute(tool);
+      completedTools.push(...toolResult.completedTools);
+      observations.push(...(toolResult.context.length
+        ? toolResult.context
+        : [`Tool ${tool} returned no readable content.`]));
+    } catch (reason) {
+      const detail = reason instanceof Error ? reason.message : String(reason);
+      observations.push(`Tool ${tool} stopped safely: ${detail.slice(0, 500)}`);
+    }
+    forceAnswer = actionCount >= maxActions || (available.size === 0 && availableMcpTools.length === 0);
   };
 
   const requiredTool = requiredGroundingTool(input.request, [...available.keys()]);
-  if (requiredTool && maxToolCalls > 0) await executeTool(requiredTool);
+  if (requiredTool && actionCount < maxActions) await executeTool(requiredTool);
 
   for (let turn = 0; turn < maxModelTurns; turn += 1) {
     const result = await input.invoke(buildAgenticTurnPrompt({
@@ -320,50 +354,75 @@ export async function runAgenticReadLoop(input: {
       request: input.request,
       tools: [...available.values()],
       observations,
-      mcpTools: input.mcpTools,
+      mcpTools: availableMcpTools,
       forceAnswer,
+      actionsUsed: actionCount,
+      maxActions,
     }), turn);
     results.push(result);
-    if (result.status !== "completed" || !result.structuredOutput) {
+    modelTurns += 1;
+    if (result.status !== "completed") {
+      const repairable = !result.meteredProviderInvocationStarted
+        && /(?:unexpected response|structured output|response format|schema|contract)/i.test(result.text);
+      if (repairable && recoveryAttempts < MAX_RECOVERY_ATTEMPTS) {
+        recoveryAttempts += 1;
+        observations.push("The previous controller response was invalid. Return exactly one supported ACTION in the required JSON shape.");
+        continue;
+      }
       return {
         result: aggregateResult(results, result),
         completedTools,
-        modelTurns: results.length,
+        modelTurns,
         toolCalls,
+        checkpoint: checkpoint(),
       };
     }
 
-    const decision = parseAgenticDecision(result, input.mcpTools);
+    if (!result.structuredOutput) {
+      recoveryAttempts += 1;
+      observations.push("The previous controller response did not use the required structured JSON shape. Return exactly one supported ACTION.");
+      forceAnswer = recoveryAttempts >= MAX_RECOVERY_ATTEMPTS;
+      continue;
+    }
+
+    const decision = parseAgenticDecision(result, availableMcpTools);
     if (decision.kind === "answer" || decision.kind === "blocked") {
       return {
         result: aggregateResult(results, result, decision.answer),
         answer: decision.answer,
         completedTools,
-        modelTurns: results.length,
+        modelTurns,
         toolCalls,
+        checkpoint: checkpoint(),
       };
     }
     if (decision.kind === "invalid") {
       observations.push(decision.message);
-      forceAnswer = true;
+      recoveryAttempts += 1;
+      forceAnswer = recoveryAttempts >= MAX_RECOVERY_ATTEMPTS;
       continue;
     }
     if (decision.kind === "mcp") {
       return {
         result: aggregateResult(results, result),
         completedTools,
-        modelTurns: results.length,
+        modelTurns,
         toolCalls,
         mcpProposal: decision.proposal,
+        checkpoint: checkpoint(),
       };
     }
-    if (forceAnswer || toolCalls.length >= maxToolCalls || !available.has(decision.tool)) {
+    if (forceAnswer || actionCount >= maxActions || !available.has(decision.tool)) {
       observations.push(`Tool ${decision.tool} is not available again. Answer from the results already supplied.`);
-      forceAnswer = true;
+      recoveryAttempts += 1;
+      forceAnswer = recoveryAttempts >= MAX_RECOVERY_ATTEMPTS
+        || actionCount >= maxActions
+        || (available.size === 0 && availableMcpTools.length === 0);
       continue;
     }
 
     await executeTool(decision.tool);
+    recoveryAttempts = 0;
   }
 
   const final = results.at(-1);
@@ -375,7 +434,8 @@ export async function runAgenticReadLoop(input: {
     result: aggregateResult(results, final, fallback),
     answer: fallback,
     completedTools,
-    modelTurns: results.length,
+    modelTurns,
     toolCalls,
+    checkpoint: checkpoint(),
   };
 }

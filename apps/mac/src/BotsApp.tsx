@@ -82,11 +82,16 @@ import BotAvatar, { avatarForBot, BOT_AVATAR_PRESETS, defaultBotAvatar } from ".
 import type { BrowserSkillReplayOutcome } from "./components/BotBrowserSkillRunActivity";
 import { useModalFocus } from "./components/useModalFocus";
 import { avatarFromFile, normalizeBotName } from "./bot-profile";
-import {
-  runAgenticReadLoop,
-  type AgenticMcpToolDefinition,
-  type AgenticReadToolDefinition,
+import type {
+  AgenticHarnessCheckpoint,
+  AgenticMcpToolDefinition,
+  AgenticReadToolDefinition,
+  AgenticReadLoopResult,
 } from "./agentic-read-loop";
+import {
+  emptyAgenticHarnessCheckpoint,
+  resumeAgenticHarnessCheckpoint,
+} from "./agentic-harness-checkpoint";
 import { buildBotPrompt } from "./bot-prompt";
 import {
   parseBrowserTeachingRequest,
@@ -356,6 +361,34 @@ function mcpToolsForChat(request: string, servers: LocalMcpServer[]): AgenticMcp
     .sort((left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name))
     .slice(0, 6)
     .map(({ tool }) => tool);
+}
+
+function agenticReadToolsForWorkspace(
+  hasApprovedFolder: boolean,
+  folderIsProject: boolean,
+): AgenticReadToolDefinition[] {
+  return [
+    ...(hasApprovedFolder && folderIsProject ? [{
+      name: "read_project_overview" as const,
+      description: "Read the approved project manifest and a few overview files such as README and package.json.",
+    }] : []),
+    ...(hasApprovedFolder ? [{
+      name: "list_selected_folder" as const,
+      description: "List only the visible top-level names in the approved folder.",
+    }] : []),
+    {
+      name: "list_local_tables" as const,
+      description: "List this bot's private local table names, columns, and row counts without reading row values.",
+    },
+    {
+      name: "list_local_routines" as const,
+      description: "List this bot's local scheduled routines and their current status without running them.",
+    },
+    {
+      name: "list_connected_tools" as const,
+      description: "List reviewed local MCP connections and the exact approved tools they provide without invoking them.",
+    },
+  ];
 }
 
 interface BrowserSessionWaiter {
@@ -2357,6 +2390,238 @@ export default function BotsApp() {
     }
   };
 
+  const runBotHarness = async (input: {
+    runBot: LocalBotRecord;
+    runSnapshot: NonNullable<typeof workspace>;
+    runId: string;
+    request: string;
+    basePrompt: string;
+    engine: IntelligenceSelection;
+    selectionMode: "fixed" | "auto";
+    meteredFallbackAuthorized: boolean;
+    connectedMcpServers: LocalMcpServer[];
+    events: ProviderRunEvent[];
+    providerInvocation: { started: boolean };
+    checkpoint?: AgenticHarnessCheckpoint;
+  }): Promise<AgenticReadLoopResult> => {
+    const {
+      runBot,
+      runSnapshot,
+      runId,
+      request,
+      basePrompt,
+      engine,
+      selectionMode,
+      meteredFallbackAuthorized,
+      connectedMcpServers,
+      events,
+      providerInvocation,
+      checkpoint,
+    } = input;
+    const hasApprovedFolder = Boolean(runSnapshot.workspaceFolder?.accessValidated);
+    const folderIsProject = selectedFolderMatchesPurpose(runSnapshot.workspaceFolder?.path, "project");
+    const availableTools = agenticReadToolsForWorkspace(hasApprovedFolder, folderIsProject);
+    const chatMcpTools = mcpToolsForChat(request, connectedMcpServers);
+    const onRunEvent = (event: ProviderRunEvent) => consumeRunEvent(runBot.id, event, events);
+    const { runAgenticReadLoop } = await import("./agentic-read-loop");
+    return runAgenticReadLoop({
+      basePrompt,
+      request,
+      tools: availableTools,
+      maxToolCalls: runBot.spec.autonomyPolicy.maxActionsPerRun,
+      mcpTools: chatMcpTools,
+      ...(checkpoint ? { checkpoint } : {}),
+      invoke: async (turnPrompt, turn) => {
+        if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
+        await changeBotStatus(
+          runBot.id,
+          "thinking",
+          turn === 0 && !checkpoint ? "Choosing the next step" : "Reviewing completed work",
+        );
+        return runIntelligenceTask(
+          engine,
+          turnPrompt,
+          (event) => {
+            if (event.eventType === "output-delta") return;
+            onRunEvent(event);
+          },
+          undefined,
+          runId,
+          selectionMode,
+          meteredFallbackAuthorized,
+          () => { providerInvocation.started = true; },
+        );
+      },
+      execute: async (tool) => {
+        if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
+        const toolStatus = {
+          read_project_overview: "Reading the approved project",
+          list_selected_folder: "Reading the approved folder",
+          list_local_tables: "Checking local tables",
+          list_local_routines: "Checking local routines",
+          list_connected_tools: "Checking reviewed connections",
+        }[tool];
+        await changeBotStatus(runBot.id, "working", toolStatus);
+        if (tool === "list_local_tables") {
+          const tables = await listLocalBotTables(runBot.id);
+          return {
+            context: [tables.length
+              ? [
+                  "Local tables available to this bot:",
+                  ...tables.map((table) => (
+                    `- ${table.name}: ${table.rowCount} rows; columns ${table.columns.map((column) => `${column.name} (${column.type})`).join(", ")}`
+                  )),
+                ].join("\n")
+              : "This bot has no local tables."],
+            completedTools: [{ toolId: "local-tables", toolName: "Local tables" }],
+          };
+        }
+        if (tool === "list_local_routines") {
+          const currentRoutines = routinesForBot(await listLocalSchedules(), runBot.id);
+          return {
+            context: [currentRoutines.length
+              ? [
+                  "Local routines configured for this bot:",
+                  ...currentRoutines.map((routine) => (
+                    `- ${routine.title}: ${routine.enabled ? "enabled" : "paused"}; ${readBotRoutineSnapshot(routine)?.triggerLabel || `${routine.cadence} at ${routine.localTime}`}; next ${routine.nextDueAt || "not scheduled"}`
+                  )),
+                ].join("\n")
+              : "This bot has no local routines."],
+            completedTools: [{ toolId: "local-routines", toolName: "Local routines" }],
+          };
+        }
+        if (tool === "list_connected_tools") {
+          return {
+            context: [connectedMcpServers.length
+              ? [
+                  "Reviewed local tool connections:",
+                  ...connectedMcpServers.map((server) => {
+                    const approved = server.tools.filter((candidate) => candidate.approved);
+                    return `- ${server.name}: ${approved.length ? approved.map((candidate) => `${candidate.name} (${candidate.effect})`).join(", ") : "no approved tools"}`;
+                  }),
+                ].join("\n")
+              : "No reviewed local tool connections are ready."],
+            completedTools: [{ toolId: "local-connections", toolName: "Local connections" }],
+          };
+        }
+        const toolResult = tool === "read_project_overview"
+          ? await readLocalProjectContext(runId, onRunEvent)
+          : await readLocalFolderListing(runId, onRunEvent);
+        if (toolResult.status !== "completed") {
+          throw new Error(events.at(-1)?.message || "Codelit could not read the approved folder.");
+        }
+        return { context: toolResult.context, completedTools: toolResult.completedTools };
+      },
+    });
+  };
+
+  const stageMcpHarnessApproval = async (input: {
+    loop: AgenticReadLoopResult;
+    runBot: LocalBotRecord;
+    runSnapshot: NonNullable<typeof workspace>;
+    runId: string;
+    request: string;
+    engine: IntelligenceSelection;
+    selectionMode: "fixed" | "auto";
+    meteredFallbackAuthorized: boolean;
+    memories: BotMemory[];
+    memorySnapshotHash: string;
+    skills: BotSkill[];
+    skillVersions: Record<string, number>;
+    events: ProviderRunEvent[];
+    priorPending?: PendingMcpRun;
+  }) => {
+    const proposal = input.loop.mcpProposal;
+    if (!proposal) throw new Error("The agent did not propose an external action.");
+    if (proposal.tool.effect !== "read" && input.runBot.spec.permissionPolicy.writeActions === "disabled") {
+      throw new Error("External actions are disabled for this bot. Enable reviewed writes, then ask again.");
+    }
+    await changeBotStatus(input.runBot.id, "thinking", `Preparing ${proposal.tool.serverName}`);
+    const onRunEvent = (event: ProviderRunEvent) => consumeRunEvent(input.runBot.id, event, input.events);
+    const prepared = await prepareNativeToolApproval(
+      input.runId,
+      [proposal.tool.reference],
+      input.request,
+      { [proposal.tool.reference]: proposal.arguments },
+      onRunEvent,
+      new AbortController().signal,
+    );
+    if (!prepared.approvalSha256) {
+      throw new Error("The exact MCP call could not be bound for approval.");
+    }
+    const invocationStarted = Boolean(
+      input.priorPending?.meteredProviderInvocationStarted
+      || input.loop.result.meteredProviderInvocationStarted,
+    );
+    const plannerEvidence = Array.from(new Set([
+      ...(input.priorPending?.plannerEvidence || []),
+      ...input.loop.result.evidence,
+    ])).slice(0, 16);
+    const pending: PendingMcpRun = {
+      approvalId: input.loop.checkpoint.mcpCalls.length
+        ? `approval-${input.runId}-mcp-${input.loop.checkpoint.mcpCalls.length + 1}`
+        : `approval-${input.runId}`,
+      runId: input.runId,
+      botId: input.runBot.id,
+      botVersion: input.runBot.currentVersion,
+      request: input.request,
+      toolReference: proposal.tool.reference,
+      serverName: proposal.tool.serverName,
+      toolName: proposal.tool.name,
+      description: proposal.tool.description,
+      effect: proposal.tool.effect,
+      destructive: proposal.tool.destructive,
+      arguments: proposal.arguments,
+      approvalSha256: prepared.approvalSha256,
+      preview: prepared.evidence,
+      engine: input.engine,
+      selectionMode: input.selectionMode,
+      meteredFallbackAuthorized: input.meteredFallbackAuthorized,
+      meteredProviderInvocationStarted: invocationStarted,
+      billingFallback: input.selectionMode === "auto"
+        && input.meteredFallbackAuthorized
+        && invocationStarted,
+      plannerDurationMs: (input.priorPending?.plannerDurationMs || 0) + input.loop.result.durationMs,
+      plannerCommandPath: input.loop.result.commandPath || input.priorPending?.plannerCommandPath || "agentic-harness",
+      ...(input.loop.result.version || input.priorPending?.plannerVersion
+        ? { plannerVersion: input.loop.result.version || input.priorPending?.plannerVersion }
+        : {}),
+      plannerEvidence,
+      memories: input.memories,
+      memorySnapshotHash: input.memorySnapshotHash,
+      skills: input.skills,
+      skillVersions: input.skillVersions,
+      harnessCheckpoint: input.loop.checkpoint,
+    };
+    const priorSteps = input.loop.checkpoint.completedTools.map((tool) => ({
+      id: tool.toolId,
+      status: "completed" as const,
+      toolName: tool.toolName,
+    }));
+    let snapshot = await saveLocalRunCheckpoint(input.runSnapshot, input.runId, {
+      stepIndex: input.loop.checkpoint.actionCount,
+      handoff: input.request,
+      priorSteps,
+      runContext: { kind: "mcp-action", ...pending },
+    });
+    snapshot = await recordLocalRunApproval(snapshot, {
+      id: pending.approvalId,
+      runId: input.runId,
+      stepIndex: input.loop.checkpoint.actionCount,
+      status: "awaiting",
+      body: {
+        kind: "mcp-action",
+        ...pending,
+        decisionSource: "pending-user",
+        safetyClass: "typed-mcp-action",
+      },
+    });
+    applyWorkspace(input.runBot.id, input.runBot.threadId, snapshot);
+    await changeBotStatus(input.runBot.id, "waiting", `Waiting to use ${pending.serverName}`);
+    updateExecutionStates((current) => waitForBotMcpApproval(current, pending));
+    return { pending, snapshot };
+  };
+
   const finishBrowserRun = async (
     pending: PendingBrowserRun,
     runBot: LocalBotRecord,
@@ -2832,14 +3097,22 @@ export default function BotsApp() {
       return { completed, result: failedResult, finalAnswer: message };
     }
     if (canceledRunIds.current.has(pending.runId)) throw new Error("Run canceled by user.");
+    const resumedCheckpoint = resumeAgenticHarnessCheckpoint(
+      pending.harnessCheckpoint || emptyAgenticHarnessCheckpoint(),
+      {
+        mcpReference: pending.toolReference,
+        context: toolResult.context,
+        completedTools: toolResult.completedTools,
+      },
+    );
     let completed = await saveLocalRunCheckpoint(runSnapshot, pending.runId, {
-      stepIndex: 2,
+      stepIndex: resumedCheckpoint.actionCount,
       handoff: `${pending.serverName} / ${pending.toolName} completed`,
-      priorSteps: [{
-        id: pending.toolReference,
+      priorSteps: resumedCheckpoint.completedTools.map((tool) => ({
+        id: tool.toolId,
         status: "completed",
-        toolName: pending.toolName,
-      }],
+        toolName: tool.toolName,
+      })),
       gateApproved: true,
       runContext: {
         kind: "mcp-action-completed",
@@ -2850,24 +3123,49 @@ export default function BotsApp() {
       },
     });
     applyWorkspace(pending.botId, runBot.threadId, completed);
-    const followUpResult = await runIntelligenceTask(
-      pending.engine,
-      buildBotPrompt(
+    const connectedMcpServers = await listLocalMcpServers();
+    const loop = await runBotHarness({
+      runBot,
+      runSnapshot: completed,
+      runId: pending.runId,
+      request: pending.request,
+      basePrompt: buildBotPrompt(
         runBot,
-        `${pending.request}\n\nThe exact approved ${pending.serverName} / ${pending.toolName} call completed. Report the concrete result from its untrusted output. Do not claim any action beyond that result.`,
-        toolResult.context,
+        pending.request,
+        [],
         pending.memories,
         pending.skills,
         undefined,
         skillPreparation.promptContext,
       ),
-      onRunEvent,
-      undefined,
-      pending.runId,
-      pending.selectionMode,
-      pending.meteredFallbackAuthorized,
-      () => { invocation.started = true; },
-    );
+      engine: pending.engine,
+      selectionMode: pending.selectionMode,
+      meteredFallbackAuthorized: pending.meteredFallbackAuthorized,
+      connectedMcpServers,
+      events,
+      providerInvocation: invocation,
+      checkpoint: resumedCheckpoint,
+    });
+    if (loop.mcpProposal) {
+      const staged = await stageMcpHarnessApproval({
+        loop,
+        runBot,
+        runSnapshot: completed,
+        runId: pending.runId,
+        request: pending.request,
+        engine: pending.engine,
+        selectionMode: pending.selectionMode,
+        meteredFallbackAuthorized: pending.meteredFallbackAuthorized,
+        memories: pending.memories,
+        memorySnapshotHash: pending.memorySnapshotHash,
+        skills: pending.skills,
+        skillVersions: pending.skillVersions,
+        events,
+        priorPending: pending,
+      });
+      return { completed: staged.snapshot, nextPending: staged.pending };
+    }
+    const followUpResult = loop.result;
     const invocationStarted = pending.meteredProviderInvocationStarted
       || followUpResult.meteredProviderInvocationStarted;
     const result: ProviderTaskResult = {
@@ -2907,7 +3205,16 @@ export default function BotsApp() {
       "artifact-plan-ship-local",
       receiptResult,
       events,
-      { ...receiptDetails, skillContracts: skillRunReceipts },
+      {
+        ...receiptDetails,
+        completedTools: loop.completedTools,
+        agentLoop: {
+          modelTurns: loop.modelTurns,
+          toolCalls: loop.toolCalls,
+          externalCalls: loop.checkpoint.mcpCalls,
+        },
+        skillContracts: skillRunReceipts,
+      },
       finalAnswer,
     );
     applyWorkspace(pending.botId, runBot.threadId, completed);
@@ -2934,6 +3241,7 @@ export default function BotsApp() {
     setBotFeedback(botId, { error: null, notice: null });
     let snapshot = workspace;
     let receiptRecorded = false;
+    let handedOffForApproval = false;
     const providerInvocation = { started: false };
     const createdAt = new Date().toISOString();
     const events: ProviderRunEvent[] = [{
@@ -2957,7 +3265,7 @@ export default function BotsApp() {
       snapshot = await recordLocalRunApproval(snapshot, {
         id: pending.approvalId,
         runId: pending.runId,
-        stepIndex: 0,
+        stepIndex: pending.harnessCheckpoint?.actionCount || 0,
         status: approved ? "approved" : "held",
         body: {
           kind: "mcp-action",
@@ -2969,7 +3277,9 @@ export default function BotsApp() {
       applyWorkspace(botId, runBot.threadId, snapshot);
       if (!approved) {
         await discardPreparedLocalToolApproval(pending.runId).catch(() => undefined);
-        const answer = `Held ${pending.serverName} / ${pending.toolName}. No external action ran.`;
+        const answer = pending.harnessCheckpoint?.mcpCalls.length
+          ? `Held ${pending.serverName} / ${pending.toolName}. This action did not run; earlier approved steps remain completed.`
+          : `Held ${pending.serverName} / ${pending.toolName}. No external action ran.`;
         const result: ProviderTaskResult = {
           runId: pending.runId,
           provider: pending.engine.provider,
@@ -3000,15 +3310,23 @@ export default function BotsApp() {
         return;
       }
       snapshot = await saveLocalRunCheckpoint(snapshot, pending.runId, {
-        stepIndex: 1,
+        stepIndex: pending.harnessCheckpoint?.actionCount || 0,
         handoff: pending.request,
-        priorSteps: [],
+        priorSteps: (pending.harnessCheckpoint?.completedTools || []).map((tool) => ({
+          id: tool.toolId,
+          status: "completed",
+          toolName: tool.toolName,
+        })),
         gateApproved: true,
         runContext: { kind: "mcp-action", ...pending },
       });
       applyWorkspace(botId, runBot.threadId, snapshot);
       const finished = await finishMcpRun(pending, runBot, snapshot, events, providerInvocation);
       snapshot = finished.completed;
+      if ("nextPending" in finished) {
+        handedOffForApproval = true;
+        return;
+      }
       receiptRecorded = true;
       if (finished.result.status !== "completed") throw new Error(finished.result.text);
       await changeBotStatus(botId, "done", `Finished with ${pending.serverName}`);
@@ -3047,7 +3365,9 @@ export default function BotsApp() {
       setBotFeedback(botId, { error: message, notice: null });
       await changeBotStatus(botId, "blocked", message).catch(() => undefined);
     } finally {
-      updateExecutionStates((current) => finishBotExecution(current, botId, pending.runId));
+      if (!handedOffForApproval) {
+        updateExecutionStates((current) => finishBotExecution(current, botId, pending.runId));
+      }
       canceledRunIds.current.delete(pending.runId);
       approvalDecisionsInFlight.current.delete(pending.runId);
     }
@@ -5743,9 +6063,6 @@ export default function BotsApp() {
         };
       }
       await changeBotStatus(botId, "working", runHasProject ? "Planning with approved folder access" : "Working locally");
-      const onRunEvent = (event: ProviderRunEvent) => {
-        consumeRunEvent(botId, event, events);
-      };
       if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
       const basePrompt = buildBotPrompt(
         runBot,
@@ -5762,193 +6079,43 @@ export default function BotsApp() {
         const connectedMcpServers = !options.routine && !options.delegation
           ? await listLocalMcpServers()
           : [];
-        const chatMcpTools = mcpToolsForChat(taskRequest, connectedMcpServers);
-        const folderIsProject = selectedFolderMatchesPurpose(runWorkspace.workspaceFolder?.path, "project");
-        const availableTools: AgenticReadToolDefinition[] = [
-          ...(runHasProject && folderIsProject ? [{
-            name: "read_project_overview" as const,
-            description: "Read the approved project manifest and a few overview files such as README and package.json.",
-          }] : []),
-          ...(runHasProject ? [{
-            name: "list_selected_folder" as const,
-            description: "List only the visible top-level names in the approved folder.",
-          }] : []),
-          {
-            name: "list_local_tables" as const,
-            description: "List this bot's private local table names, columns, and row counts without reading row values.",
-          },
-          {
-            name: "list_local_routines" as const,
-            description: "List this bot's local scheduled routines and their current status without running them.",
-          },
-          {
-            name: "list_connected_tools" as const,
-            description: "List reviewed local MCP connections and the exact approved tools they provide without invoking them.",
-          },
-        ];
-        const loop = await runAgenticReadLoop({
-          basePrompt,
+        const loop = await runBotHarness({
+          runBot,
+          runSnapshot,
+          runId,
           request: taskRequest,
-          tools: availableTools,
-          maxToolCalls: runBot.spec.autonomyPolicy.maxActionsPerRun,
-          mcpTools: chatMcpTools,
-          invoke: async (turnPrompt, turn) => {
-            if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
-            await changeBotStatus(botId, "thinking", turn === 0 ? "Choosing the next step" : "Reviewing local evidence");
-            return runIntelligenceTask(
-              runEngine,
-              turnPrompt,
-              (event) => {
-                if (event.eventType === "output-delta") return;
-                onRunEvent(event);
-              },
-              undefined,
-              runId,
-              runSelectionMode,
-              runMeteredFallbackAuthorized,
-              () => { providerInvocation.started = true; },
-            );
-          },
-          execute: async (tool) => {
-            if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
-            const toolStatus = {
-              read_project_overview: "Reading the approved project",
-              list_selected_folder: "Reading the approved folder",
-              list_local_tables: "Checking local tables",
-              list_local_routines: "Checking local routines",
-              list_connected_tools: "Checking reviewed connections",
-            }[tool];
-            await changeBotStatus(
-              botId,
-              "working",
-              toolStatus,
-            );
-            if (tool === "list_local_tables") {
-              const tables = await listLocalBotTables(runBot.id);
-              return {
-                context: [tables.length
-                  ? [
-                      "Local tables available to this bot:",
-                      ...tables.map((table) => (
-                        `- ${table.name}: ${table.rowCount} rows; columns ${table.columns.map((column) => `${column.name} (${column.type})`).join(", ")}`
-                      )),
-                    ].join("\n")
-                  : "This bot has no local tables."],
-                completedTools: [{ toolId: "local-tables", toolName: "Local tables" }],
-              };
-            }
-            if (tool === "list_local_routines") {
-              const currentRoutines = routinesForBot(await listLocalSchedules(), runBot.id);
-              return {
-                context: [currentRoutines.length
-                  ? [
-                      "Local routines configured for this bot:",
-                      ...currentRoutines.map((routine) => (
-                        `- ${routine.title}: ${routine.enabled ? "enabled" : "paused"}; ${readBotRoutineSnapshot(routine)?.triggerLabel || `${routine.cadence} at ${routine.localTime}`}; next ${routine.nextDueAt || "not scheduled"}`
-                      )),
-                    ].join("\n")
-                  : "This bot has no local routines."],
-                completedTools: [{ toolId: "local-routines", toolName: "Local routines" }],
-              };
-            }
-            if (tool === "list_connected_tools") {
-              const servers = connectedMcpServers;
-              return {
-                context: [servers.length
-                  ? [
-                      "Reviewed local tool connections:",
-                      ...servers.map((server) => {
-                        const approved = server.tools.filter((candidate) => candidate.approved);
-                        return `- ${server.name}: ${approved.length ? approved.map((candidate) => `${candidate.name} (${candidate.effect})`).join(", ") : "no approved tools"}`;
-                      }),
-                    ].join("\n")
-                  : "No reviewed local tool connections are ready."],
-                completedTools: [{ toolId: "local-connections", toolName: "Local connections" }],
-              };
-            }
-            const toolResult = tool === "read_project_overview"
-              ? await readLocalProjectContext(runId, onRunEvent)
-              : await readLocalFolderListing(runId, onRunEvent);
-            if (toolResult.status !== "completed") {
-              throw new Error(events.at(-1)?.message || "Codelit could not read the approved folder.");
-            }
-            return { context: toolResult.context, completedTools: toolResult.completedTools };
-          },
+          basePrompt,
+          engine: runEngine,
+          selectionMode: runSelectionMode,
+          meteredFallbackAuthorized: runMeteredFallbackAuthorized,
+          connectedMcpServers,
+          events,
+          providerInvocation,
         });
         result = loop.result;
         completedTools = loop.completedTools;
         agentLoop = { modelTurns: loop.modelTurns, toolCalls: loop.toolCalls };
         if (loop.mcpProposal) {
-          const proposal = loop.mcpProposal;
-          if (proposal.tool.effect !== "read" && runBot.spec.permissionPolicy.writeActions === "disabled") {
-            throw new Error("External actions are disabled for this bot. Enable reviewed writes, then ask again.");
-          }
-          await changeBotStatus(botId, "thinking", `Preparing ${proposal.tool.serverName}`);
-          const prepared = await prepareNativeToolApproval(
+          const staged = await stageMcpHarnessApproval({
+            loop,
+            runBot,
+            runSnapshot,
             runId,
-            [proposal.tool.reference],
-            submitted,
-            { [proposal.tool.reference]: proposal.arguments },
-            onRunEvent,
-            new AbortController().signal,
-          );
-          if (!prepared.approvalSha256) {
-            throw new Error("The exact MCP call could not be bound for approval.");
-          }
-          const pending: PendingMcpRun = {
-            approvalId: `approval-${runId}`,
-            runId,
-            botId,
-            botVersion: runBot.currentVersion,
             request: submitted,
-            toolReference: proposal.tool.reference,
-            serverName: proposal.tool.serverName,
-            toolName: proposal.tool.name,
-            description: proposal.tool.description,
-            effect: proposal.tool.effect,
-            destructive: proposal.tool.destructive,
-            arguments: proposal.arguments,
-            approvalSha256: prepared.approvalSha256,
-            preview: prepared.evidence,
             engine: runEngine,
             selectionMode: runSelectionMode,
             meteredFallbackAuthorized: runMeteredFallbackAuthorized,
-            meteredProviderInvocationStarted: loop.result.meteredProviderInvocationStarted,
-            billingFallback: loop.result.billingFallback,
-            plannerDurationMs: loop.result.durationMs,
-            plannerCommandPath: loop.result.commandPath,
-            ...(loop.result.version ? { plannerVersion: loop.result.version } : {}),
-            plannerEvidence: loop.result.evidence.slice(0, 16),
             memories: runMemories,
             memorySnapshotHash,
             skills: runSkills,
             skillVersions,
-          };
-          runSnapshot = await saveLocalRunCheckpoint(runSnapshot, runId, {
-            stepIndex: 0,
-            handoff: submitted,
-            priorSteps: [],
-            runContext: { kind: "mcp-action", ...pending },
+            events,
           });
-          runSnapshot = await recordLocalRunApproval(runSnapshot, {
-            id: pending.approvalId,
-            runId,
-            stepIndex: 0,
-            status: "awaiting",
-            body: {
-              kind: "mcp-action",
-              ...pending,
-              decisionSource: "pending-user",
-              safetyClass: "typed-mcp-action",
-            },
-          });
-          applyWorkspace(botId, threadId, runSnapshot);
-          await changeBotStatus(botId, "waiting", `Waiting to use ${pending.serverName}`);
-          updateExecutionStates((current) => waitForBotMcpApproval(current, pending));
+          runSnapshot = staged.snapshot;
           handedOffForApproval = true;
           return {
             status: "approval-required",
-            detail: `Approval is required for the exact ${pending.serverName} call.`,
+            detail: `Approval is required for the exact ${staged.pending.serverName} call.`,
             runId,
           };
         }

@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProviderTaskResult } from "../../apps/mac/src/contracts";
 import {
   buildAgenticTurnPrompt,
+  normalizeAgenticHarnessCheckpoint,
   parseAgenticDecision,
   requiredGroundingTool,
+  resumeAgenticHarnessCheckpoint,
   runAgenticReadLoop,
 } from "../../apps/mac/src/agentic-read-loop";
 
@@ -181,6 +183,69 @@ describe("Mac bounded agentic read loop", () => {
     });
     expect(execute).not.toHaveBeenCalled();
     expect(completed.answer).toBeUndefined();
+    expect(completed.checkpoint).toMatchObject({ actionCount: 0, mcpCalls: [] });
+  });
+
+  it("resumes from an approved MCP result without proposing the same action twice", async () => {
+    const proposal = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "Send Mo a status email and report the result",
+      tools,
+      mcpTools,
+      maxToolCalls: 5,
+      invoke: vi.fn().mockResolvedValue(result("Preparing the reviewed call", [
+        "ACTION:mcp:mcp::gmail::send_email",
+        'ARGUMENTS:{"to":"mo@example.com","subject":"Status"}',
+      ])),
+      execute: vi.fn(),
+    });
+    const checkpoint = resumeAgenticHarnessCheckpoint(proposal.checkpoint, {
+      mcpReference: "mcp::gmail::send_email",
+      context: ["Gmail returned message id msg-42."],
+      completedTools: [{ toolId: "mcp::gmail::send_email", toolName: "Gmail / send_email" }],
+    });
+    const invoke = vi.fn().mockResolvedValue(result("The status email was sent as msg-42."));
+    const completed = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "Send Mo a status email and report the result",
+      tools,
+      mcpTools,
+      checkpoint,
+      maxToolCalls: 5,
+      invoke,
+      execute: vi.fn(),
+    });
+    expect(completed.answer).toBe("The status email was sent as msg-42.");
+    expect(completed.checkpoint).toMatchObject({
+      actionCount: 1,
+      mcpCalls: ["mcp::gmail::send_email"],
+    });
+    expect(invoke.mock.calls[0][0]).toContain("Gmail returned message id msg-42.");
+    expect(invoke.mock.calls[0][0]).not.toContain("ACTION:mcp:mcp::gmail::send_email");
+  });
+
+  it("rejects tampered or duplicate persisted harness checkpoints", () => {
+    const checkpoint = resumeAgenticHarnessCheckpoint({
+      schemaVersion: 1,
+      observations: [],
+      completedTools: [],
+      toolCalls: [],
+      mcpCalls: [],
+      actionCount: 0,
+      modelTurns: 1,
+      recoveryAttempts: 0,
+    }, {
+      mcpReference: "mcp::gmail::send_email",
+      context: ["sent"],
+      completedTools: [],
+    });
+    expect(normalizeAgenticHarnessCheckpoint(checkpoint)).toEqual(checkpoint);
+    expect(normalizeAgenticHarnessCheckpoint({ ...checkpoint, actionCount: 0 })).toBeNull();
+    expect(() => resumeAgenticHarnessCheckpoint(checkpoint, {
+      mcpReference: "mcp::gmail::send_email",
+      context: ["sent again"],
+      completedTools: [],
+    })).toThrow(/does not match/);
   });
 
   it("answers directly without executing a tool when the model does not need one", async () => {
@@ -264,6 +329,64 @@ describe("Mac bounded agentic read loop", () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(completed.answer).toBe("The available evidence is enough.");
     expect(invoke.mock.calls[2][0]).not.toContain("ACTION:tool:read_project_overview -");
+  });
+
+  it("uses the configured bounded budget for more than two useful local actions", async () => {
+    const invoke = vi.fn()
+      .mockResolvedValueOnce(result("Checking tables", ["ACTION:tool:list_local_tables"]))
+      .mockResolvedValueOnce(result("Checking routines", ["ACTION:tool:list_local_routines"]))
+      .mockResolvedValueOnce(result("Checking connections", ["ACTION:tool:list_connected_tools"]))
+      .mockResolvedValueOnce(result("Everything is ready.", ["ACTION:answer"]));
+    const execute = vi.fn().mockImplementation(async (tool: string) => ({
+      context: [`${tool} result`],
+      completedTools: [{ toolId: tool, toolName: tool }],
+    }));
+    const completed = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "Review the available local setup",
+      tools: localCapabilityTools,
+      maxToolCalls: 5,
+      invoke,
+      execute,
+    });
+    expect(execute).toHaveBeenCalledTimes(3);
+    expect(completed.answer).toBe("Everything is ready.");
+    expect(completed.checkpoint.actionCount).toBe(3);
+  });
+
+  it("repairs one malformed local-model controller response", async () => {
+    const invoke = vi.fn()
+      .mockResolvedValueOnce(result("plain output", [], { structuredOutput: undefined }))
+      .mockResolvedValueOnce(result("Recovered cleanly.", ["ACTION:answer"]));
+    const completed = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "Say hello",
+      tools,
+      maxToolCalls: 2,
+      invoke,
+      execute: vi.fn(),
+    });
+    expect(completed.answer).toBe("Recovered cleanly.");
+    expect(completed.modelTurns).toBe(2);
+    expect(invoke.mock.calls[1][0]).toContain("did not use the required structured JSON shape");
+  });
+
+  it("turns a safe local tool failure into context the model can explain", async () => {
+    const invoke = vi.fn().mockResolvedValue(result(
+      "The approved project could not be read. Choose it again and retry.",
+      ["ACTION:blocked"],
+    ));
+    const completed = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "What does this codebase do?",
+      tools,
+      maxToolCalls: 2,
+      invoke,
+      execute: vi.fn().mockRejectedValue(new Error("Folder access expired")),
+    });
+    expect(completed.answer).toContain("Choose it again");
+    expect(invoke.mock.calls[0][0]).toContain("stopped safely: Folder access expired");
+    expect(completed.checkpoint.actionCount).toBe(1);
   });
 
   it("does not expose an internal action marker when the model never settles", async () => {
