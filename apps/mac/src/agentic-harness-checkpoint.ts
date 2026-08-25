@@ -18,6 +18,7 @@ export interface AgenticHarnessCheckpoint {
   observations: string[];
   completedTools: AgenticReadToolResult["completedTools"];
   toolCalls: AgenticReadTool[];
+  nativeCalls: string[];
   mcpCalls: string[];
   actionCount: number;
   modelTurns: number;
@@ -67,6 +68,7 @@ export function emptyAgenticHarnessCheckpoint(): AgenticHarnessCheckpoint {
     observations: [],
     completedTools: [],
     toolCalls: [],
+    nativeCalls: [],
     mcpCalls: [],
     actionCount: 0,
     modelTurns: 0,
@@ -80,6 +82,7 @@ export function normalizeAgenticHarnessCheckpoint(value: unknown): AgenticHarnes
     || !Array.isArray(value.observations)
     || !Array.isArray(value.completedTools)
     || !Array.isArray(value.toolCalls)
+    || (value.nativeCalls !== undefined && !Array.isArray(value.nativeCalls))
     || !Array.isArray(value.mcpCalls)
     || !Number.isInteger(value.actionCount)
     || Number(value.actionCount) < 0
@@ -106,6 +109,12 @@ export function normalizeAgenticHarnessCheckpoint(value: unknown): AgenticHarnes
       : []
   ));
   const toolCalls = value.toolCalls.filter(isReadTool);
+  const nativeCalls = (value.nativeCalls || []).filter((name): name is string => (
+    typeof name === "string"
+    && name.length > 0
+    && name.length <= 80
+    && /^[a-z][a-z0-9_]*$/.test(name)
+  ));
   const mcpCalls = value.mcpCalls.filter((reference): reference is string => (
     typeof reference === "string"
     && reference.length <= 300
@@ -116,16 +125,19 @@ export function normalizeAgenticHarnessCheckpoint(value: unknown): AgenticHarnes
     || completedTools.length !== value.completedTools.length
     || completedTools.length > MAX_COMPLETED_TOOLS
     || toolCalls.length !== value.toolCalls.length
+    || nativeCalls.length !== (value.nativeCalls || []).length
     || mcpCalls.length !== value.mcpCalls.length
     || new Set(toolCalls).size !== toolCalls.length
+    || new Set(nativeCalls).size !== nativeCalls.length
     || new Set(mcpCalls).size !== mcpCalls.length
-    || Number(value.actionCount) !== toolCalls.length + mcpCalls.length) return null;
+    || Number(value.actionCount) !== toolCalls.length + nativeCalls.length + mcpCalls.length) return null;
 
   return {
     schemaVersion: 1,
     observations,
     completedTools,
     toolCalls,
+    nativeCalls,
     mcpCalls,
     actionCount: Number(value.actionCount),
     modelTurns: Number(value.modelTurns),

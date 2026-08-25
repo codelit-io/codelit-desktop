@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "tasks": [
     { "id": "conversation", "lane": "conversation", "request": "Hi, what can you help me with?" },
     { "id": "project-overview", "lane": "project-read", "request": "What's this codebase about?" },
@@ -13,6 +13,34 @@
     { "id": "routine", "lane": "control", "request": "Every weekday at 9 AM, inspect https://codelit.io and report material changes" },
     { "id": "project-watch", "lane": "control", "request": "When this project changes, summarize only material differences" },
     { "id": "memory", "lane": "control", "request": "Remember that releases require QA approval" },
-    { "id": "skill", "lane": "control", "request": "Teach a skill called Release Check that identifies the riskiest release gap" }
+    { "id": "skill", "lane": "control", "request": "Teach a skill called Release Check that identifies the riskiest release gap" },
+    {
+      "id": "native-goal",
+      "lane": "native-action",
+      "request": "I want you to own getting this release ready",
+      "expectedNativeAction": "set_goal",
+      "controllerItems": ["ACTION:native:set_goal", "ARGUMENTS:{\"outcome\":\"Prepare a verifiable release\"}"]
+    },
+    {
+      "id": "native-table",
+      "lane": "native-action",
+      "request": "Give us a private place to track release risks and owners",
+      "expectedNativeAction": "create_table",
+      "controllerItems": ["ACTION:native:create_table", "ARGUMENTS:{\"name\":\"Release Risks\",\"columns\":[{\"name\":\"Risk\",\"type\":\"text\"},{\"name\":\"Owner\",\"type\":\"text\"}]}" ]
+    },
+    {
+      "id": "native-routine",
+      "lane": "native-action",
+      "request": "Keep checking the release dashboard every weekday morning",
+      "expectedNativeAction": "create_routine",
+      "controllerItems": ["ACTION:native:create_routine", "ARGUMENTS:{\"prompt\":\"Check the release dashboard\",\"cadence\":\"weekdays\",\"localTime\":\"09:00\"}"]
+    },
+    {
+      "id": "native-delegation",
+      "lane": "native-action",
+      "request": "Have our reviewer challenge the evidence and bring back one gap",
+      "expectedNativeAction": "delegate",
+      "controllerItems": ["ACTION:native:delegate", "ARGUMENTS:{\"targetBotNames\":[\"Reviewer\"],\"task\":\"Challenge the release evidence and return one gap\"}"]
+    }
   ]
 }

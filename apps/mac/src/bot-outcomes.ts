@@ -13,6 +13,12 @@ interface BotThreadBlock {
   status?: string;
 }
 
+export interface BotOutcomeSignal {
+  request: string;
+  repeatCount: number;
+  status: "completed" | "failed" | "paused";
+}
+
 export interface BotOutcomeAction {
   id: string;
   label: string;
@@ -110,8 +116,13 @@ export function buildBotStarterOutcomes(capabilities: BotOutcomeCapabilities): B
 }
 
 export function latestCompletedBotRequest(blocks: readonly BotThreadBlock[]) {
+  const signal = latestBotOutcome(blocks);
+  return signal?.status === "completed" ? signal.request : null;
+}
+
+export function latestBotOutcome(blocks: readonly BotThreadBlock[]): BotOutcomeSignal | null {
   let request = "";
-  let completed = false;
+  let status: BotOutcomeSignal["status"] | null = null;
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index];
     if (block.type === "user-message") {
@@ -119,18 +130,27 @@ export function latestCompletedBotRequest(blocks: readonly BotThreadBlock[]) {
       break;
     }
     if (block.type === "assistant-message" || block.type === "receipt" || (block.type === "run" && block.status === "completed")) {
-      completed = true;
+      status ||= "completed";
     }
     if (block.type === "error" || (block.type === "run" && ["failed", "stopped"].includes(block.status || ""))) {
-      completed = false;
+      status = "failed";
+    }
+    if (block.type === "run" && ["paused", "approval-required"].includes(block.status || "")) {
+      status = "paused";
     }
   }
-  return completed && request ? request : null;
+  if (!request || !status) return null;
+  const normalized = request.toLowerCase();
+  const repeatCount = blocks.filter((block) => (
+    block.type === "user-message" && boundedRequest(block.text || "").toLowerCase() === normalized
+  )).length;
+  return { request, repeatCount, status };
 }
 
 export function buildBotNextActions(
   requestValue: string | null,
   capabilities: Pick<BotOutcomeCapabilities, "hasProject" | "schedulesAvailable">,
+  repeatCount = 1,
 ): BotOutcomeAction[] {
   const request = boundedRequest(requestValue || "");
   if (!request || request.length < 12 || CONTROL_REQUEST.test(request)) return [];
@@ -138,7 +158,7 @@ export function buildBotNextActions(
   if (capabilities.schedulesAvailable && hasWebsite(request)) {
     actions.push({
       id: "monitor-weekdays",
-      label: "Monitor every weekday",
+      label: repeatCount > 1 ? "Keep doing this" : "Monitor every weekday",
       prompt: `Every weekday at 9 AM, ${request}`,
     });
     actions.push({
@@ -172,4 +192,22 @@ export function buildBotNextActions(
     prompt: `Teach this as a skill called ${reusableSkillName(request)}`,
   });
   return actions.slice(0, 2);
+}
+
+export function buildBotRecoveryActions(signal: BotOutcomeSignal | null): BotOutcomeAction[] {
+  if (!signal || signal.status === "completed" || CONTROL_REQUEST.test(signal.request)) return [];
+  const request = boundedRequest(signal.request);
+  if (!request) return [];
+  return [
+    {
+      id: "retry-read-only",
+      label: "Retry one safe step",
+      prompt: `Retry this by taking only the smallest useful read-only step: ${request}`,
+    },
+    {
+      id: "explain-blocker",
+      label: "Explain the blocker",
+      prompt: `Explain the exact blocker for this request without taking another action: ${request}`,
+    },
+  ];
 }

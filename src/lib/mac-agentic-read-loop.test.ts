@@ -9,6 +9,7 @@ import {
   resumeAgenticHarnessCheckpoint,
   runAgenticReadLoop,
 } from "../../apps/mac/src/agentic-read-loop";
+import { buildAgenticNativeActions } from "../../apps/mac/src/agentic-native-actions";
 
 function result(
   summary: string,
@@ -63,6 +64,12 @@ const mcpTools = [{
   destructive: false,
 }];
 
+const nativeActions = buildAgenticNativeActions({
+  hasProject: true,
+  schedulesAvailable: true,
+  teammateNames: ["Reviewer"],
+});
+
 describe("Mac bounded agentic read loop", () => {
   it("treats a normal structured response as an answer for provider compatibility", () => {
     expect(parseAgenticDecision(result("A useful answer", []))).toEqual({
@@ -96,6 +103,27 @@ describe("Mac bounded agentic read loop", () => {
         arguments: { to: "mo@example.com", subject: "Status" },
       },
     });
+  });
+
+  it("parses only available native actions with strict typed arguments", () => {
+    expect(parseAgenticDecision(result("Updating the goal", [
+      "ACTION:native:set_goal",
+      'ARGUMENTS:{"outcome":"Prepare a verifiable release"}',
+    ]), [], nativeActions)).toEqual({
+      kind: "native",
+      proposal: {
+        action: "set_goal",
+        arguments: { outcome: "Prepare a verifiable release" },
+      },
+    });
+    expect(parseAgenticDecision(result("Updating", [
+      "ACTION:native:set_goal",
+      'ARGUMENTS:{"outcome":"Prepare a release","silent":true}',
+    ]), [], nativeActions)).toMatchObject({ kind: "invalid" });
+    expect(parseAgenticDecision(result("Updating", [
+      "ACTION:native:delete_everything",
+      "ARGUMENTS:{}",
+    ]), [], nativeActions)).toMatchObject({ kind: "invalid" });
   });
 
   it("rejects unavailable MCP tools and unsafe or malformed arguments", () => {
@@ -160,6 +188,83 @@ describe("Mac bounded agentic read loop", () => {
     });
     expect(prompt.length).toBeLessThanOrEqual(7_800);
     expect(prompt).toContain("Current user request: Send the exact release note to the approved channel");
+  });
+
+  it("keeps every advertised native action inside the bounded controller prompt", () => {
+    const prompt = buildAgenticTurnPrompt({
+      basePrompt: "You are helpful.",
+      request: "Set up my local workspace",
+      tools: localCapabilityTools,
+      observations: [],
+      nativeActions,
+    });
+    for (const action of nativeActions) {
+      expect(prompt).toContain(`ACTION:native:${action.name}`);
+    }
+    expect(prompt.length).toBeLessThanOrEqual(7_800);
+  });
+
+  it("executes one typed native action and lets the model explain the completed result", async () => {
+    const invoke = vi.fn()
+      .mockResolvedValueOnce(result("Updating the goal", [
+        "ACTION:native:set_goal",
+        'ARGUMENTS:{"outcome":"Prepare a verifiable release"}',
+      ]))
+      .mockResolvedValueOnce(result("Your goal is now to prepare a verifiable release.", [
+        "ACTION:answer",
+      ]));
+    const executeNative = vi.fn().mockResolvedValue({
+      context: ["The local goal is now: Prepare a verifiable release."],
+      completedTools: [{ toolId: "goal-2", toolName: "Update local goal" }],
+    });
+    const completed = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "I want you to own getting this release ready",
+      tools: [],
+      nativeActions,
+      maxToolCalls: 4,
+      invoke,
+      execute: vi.fn(),
+      executeNative,
+    });
+    expect(executeNative).toHaveBeenCalledExactlyOnceWith({
+      action: "set_goal",
+      arguments: { outcome: "Prepare a verifiable release" },
+    });
+    expect(invoke.mock.calls[1][0]).toContain("The local goal is now: Prepare a verifiable release.");
+    expect(completed.nativeCalls).toEqual(["set_goal"]);
+    expect(completed.checkpoint.nativeCalls).toEqual(["set_goal"]);
+    expect(completed.answer).toBe("Your goal is now to prepare a verifiable release.");
+  });
+
+  it("does not repeat a native write when its result needs recovery", async () => {
+    const invoke = vi.fn()
+      .mockResolvedValueOnce(result("Creating a tracker", [
+        "ACTION:native:create_table",
+        'ARGUMENTS:{"name":"Work","columns":[{"name":"Task","type":"text"}]}',
+      ]))
+      .mockResolvedValueOnce(result("Trying again", [
+        "ACTION:native:create_table",
+        'ARGUMENTS:{"name":"Work","columns":[{"name":"Task","type":"text"}]}',
+      ]))
+      .mockResolvedValueOnce(result("The Work table is ready.", ["ACTION:answer"]));
+    const executeNative = vi.fn().mockResolvedValue({
+      context: ["Created private local table Work with columns Task (text)."],
+      completedTools: [{ toolId: "table-work", toolName: "Create Work" }],
+    });
+    const completed = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "Make me somewhere to track work",
+      tools: [],
+      nativeActions,
+      maxToolCalls: 4,
+      invoke,
+      execute: vi.fn(),
+      executeNative,
+    });
+    expect(executeNative).toHaveBeenCalledTimes(1);
+    expect(completed.nativeCalls).toEqual(["create_table"]);
+    expect(completed.answer).toBe("The Work table is ready.");
   });
 
   it("returns an MCP proposal without invoking the external tool", async () => {
@@ -264,6 +369,7 @@ describe("Mac bounded agentic read loop", () => {
         observations: [],
         completedTools: [],
         toolCalls: [],
+        nativeCalls: [],
         mcpCalls: [],
         actionCount: 0,
         modelTurns: 24,
@@ -281,6 +387,7 @@ describe("Mac bounded agentic read loop", () => {
       observations: [],
       completedTools: [],
       toolCalls: [],
+      nativeCalls: [],
       mcpCalls: [],
       actionCount: 0,
       modelTurns: 1,

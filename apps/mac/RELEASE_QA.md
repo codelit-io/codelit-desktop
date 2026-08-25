@@ -12,6 +12,11 @@ Direct computer use has a separate exact-candidate lifecycle gate in
 multi-display actions, lock, sleep/wake, display state and topology, permission
 revocation, approved-app exit, recovery, and no automatic retry.
 
+The model-driven local harness has a ten-journey MLX and subscription-provider
+gate in [`HARNESS_RELEASE_QA.md`](./HARNESS_RELEASE_QA.md). It verifies flexible
+typed actions, exact approval resume, proactive follow-through, receipts, and
+relaunch restore against one unchanged signed Direct candidate.
+
 ## Source-bound renderer gate
 
 Run from the repository root on Apple Silicon macOS:

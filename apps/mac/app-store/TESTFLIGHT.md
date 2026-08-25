@@ -17,6 +17,7 @@ Use `Codelit Mac Internal` for the first signed build. Include at least one Appl
 9. Sleep and wake during a local run, interrupt a model download, fill disk space, and recover without losing the conversation.
 10. Upgrade from the previous schema fixture, reject a newer unsupported schema, and verify local-only use without a network.
 11. Install and update the exact candidate through TestFlight, then verify the build number and receipt after relaunch.
+12. Run the App Store-compatible portions of [`../HARNESS_RELEASE_QA.md`](../HARNESS_RELEASE_QA.md): conversation, goal, table, project read, and teammate handoff. Confirm Direct-only browser, computer, background routine, and MCP paths remain clearly unavailable rather than simulated.
 
 ## External cohort
 

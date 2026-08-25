@@ -43,6 +43,7 @@ const commonChecks = [
 const channelChecks = {
   direct: [
     ["direct-provider-adapters", "Exercise the supported Codex, Claude Code, and Ollama adapter boundaries"],
+    ["direct-agentic-harness", "Complete the ten MLX and external-provider harness journeys with typed actions, exact approvals, receipts, and relaunch restore"],
     ["direct-agent-browser", "Complete an agent website inspection, approval, evidence capture, and recovery"],
     ["direct-scheduler", "Exercise duplicate wake, disable, deletion, login, restart, and upgrade replacement"],
     ["direct-gatekeeper", "Verify Developer ID signing, Gatekeeper, notarization, and staples"],

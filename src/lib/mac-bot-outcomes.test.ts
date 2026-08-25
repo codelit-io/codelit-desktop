@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildBotNextActions,
+  buildBotRecoveryActions,
   buildBotStarterOutcomes,
   latestCompletedBotRequest,
+  latestBotOutcome,
 } from "../../apps/mac/src/bot-outcomes";
 
 describe("Mac bot outcome actions", () => {
@@ -66,6 +68,42 @@ describe("Mac bot outcome actions", () => {
       }),
       expect.objectContaining({ id: "save-skill" }),
     ]);
+  });
+
+  it("turns repeated successful work into a plain automation suggestion", () => {
+    const signal = latestBotOutcome([
+      { type: "user-message", text: "Inspect https://example.com for broken links" },
+      { type: "run", status: "completed" },
+      { type: "assistant-message", text: "Done" },
+      { type: "user-message", text: "Inspect https://example.com for broken links" },
+      { type: "run", status: "completed" },
+      { type: "assistant-message", text: "Done again" },
+    ]);
+    expect(signal).toEqual({
+      request: "Inspect https://example.com for broken links",
+      repeatCount: 2,
+      status: "completed",
+    });
+    expect(buildBotNextActions(signal!.request, {
+      hasProject: false,
+      schedulesAvailable: true,
+    }, signal!.repeatCount)[0]).toMatchObject({
+      id: "monitor-weekdays",
+      label: "Keep doing this",
+    });
+  });
+
+  it("offers bounded recovery after a failed run instead of hiding the next step", () => {
+    const signal = latestBotOutcome([
+      { type: "user-message", text: "Inspect the release dashboard and report regressions" },
+      { type: "run", status: "failed" },
+    ]);
+    expect(signal?.status).toBe("failed");
+    expect(buildBotRecoveryActions(signal).map((action) => action.id)).toEqual([
+      "retry-read-only",
+      "explain-blocker",
+    ]);
+    expect(buildBotRecoveryActions(signal)[0].prompt).toContain("smallest useful read-only step");
   });
 
   it("does not add follow-ups to built-in controls or local data actions", () => {

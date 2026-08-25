@@ -231,6 +231,7 @@ describe("Codelit Mac signed-candidate QA", () => {
 
   it("requires channel-specific release proof", () => {
     expect(requiredCandidateQaChecks("direct").map((check) => check.id)).toContain("direct-update-rollback");
+    expect(requiredCandidateQaChecks("direct").map((check) => check.id)).toContain("direct-agentic-harness");
     expect(requiredCandidateQaChecks("app-store").map((check) => check.id)).toContain("testflight-install-update");
     expect(requiredCandidateQaChecks("app-store").map((check) => check.id)).not.toContain("direct-scheduler");
   });

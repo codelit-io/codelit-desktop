@@ -1,6 +1,12 @@
 import type { ProviderTaskResult } from "./contracts";
 import { formatProviderFinalAnswer, PROVIDER_FINAL_OUTPUT_LIMITS } from "./provider-run-live";
 import {
+  validateAgenticNativeArguments,
+  type AgenticNativeAction,
+  type AgenticNativeActionDefinition,
+  type AgenticNativeActionProposal,
+} from "./agentic-native-actions";
+import {
   AGENTIC_READ_TOOLS,
   MAX_HARNESS_ACTIONS,
   MAX_HARNESS_MODEL_TURNS,
@@ -51,6 +57,7 @@ export interface AgenticReadLoopResult {
   completedTools: AgenticReadToolResult["completedTools"];
   modelTurns: number;
   toolCalls: AgenticReadTool[];
+  nativeCalls: AgenticNativeAction[];
   mcpProposal?: AgenticMcpProposal;
   checkpoint: AgenticHarnessCheckpoint;
 }
@@ -59,6 +66,7 @@ type AgenticDecision =
   | { kind: "answer"; answer: string }
   | { kind: "blocked"; answer: string }
   | { kind: "tool"; tool: AgenticReadTool }
+  | { kind: "native"; proposal: AgenticNativeActionProposal }
   | { kind: "mcp"; proposal: AgenticMcpProposal }
   | { kind: "invalid"; message: string };
 
@@ -68,6 +76,7 @@ const MAX_RECORDED_EVIDENCE = 16;
 const MCP_ARGUMENTS_PREFIX = "ARGUMENTS:";
 const MAX_MCP_ARGUMENT_CHARS = 32_000;
 const MAX_MCP_ACTION_PROMPT_CHARS = 1_200;
+const MAX_NATIVE_ACTION_PROMPT_CHARS = 1_800;
 const BLOCKED_ARGUMENT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 function isAgenticReadTool(value: string): value is AgenticReadTool {
@@ -133,7 +142,7 @@ function isSafeJsonValue(value: unknown, depth = 0): boolean {
   ));
 }
 
-function parseMcpArguments(result: ProviderTaskResult): Record<string, unknown> | null {
+function parseActionArguments(result: ProviderTaskResult): Record<string, unknown> | null {
   const markers = result.structuredOutput?.items.filter((item) => (
     item.trim().toUpperCase().startsWith(MCP_ARGUMENTS_PREFIX)
   )) || [];
@@ -153,6 +162,7 @@ function parseMcpArguments(result: ProviderTaskResult): Record<string, unknown> 
 export function parseAgenticDecision(
   result: ProviderTaskResult,
   mcpTools: AgenticMcpToolDefinition[] = [],
+  nativeActions: AgenticNativeActionDefinition[] = [],
 ): AgenticDecision {
   if (result.status !== "completed" || !result.structuredOutput) {
     return { kind: "invalid", message: result.text || "The model did not return a usable decision." };
@@ -176,11 +186,32 @@ export function parseAgenticDecision(
     const requested = rawAction.slice("mcp:".length).trim();
     const tool = mcpTools.find((candidate) => candidate.reference.toLowerCase() === requested.toLowerCase());
     if (!tool) return { kind: "invalid", message: `The model requested unavailable MCP tool ${requested || "unknown"}.` };
-    const argumentsValue = parseMcpArguments(result);
+    const argumentsValue = parseActionArguments(result);
     if (!argumentsValue) {
       return { kind: "invalid", message: `The model did not provide one valid typed argument object for ${tool.name}.` };
     }
     return { kind: "mcp", proposal: { tool, arguments: argumentsValue } };
+  }
+  if (action.startsWith("native:")) {
+    const requested = rawAction.slice("native:".length).trim();
+    const definition = nativeActions.find((candidate) => (
+      candidate.name.toLowerCase() === requested.toLowerCase()
+    ));
+    if (!definition) {
+      return { kind: "invalid", message: `The model requested unavailable native action ${requested || "unknown"}.` };
+    }
+    const argumentsValue = validateAgenticNativeArguments(
+      definition.name,
+      parseActionArguments(result),
+      definition,
+    );
+    if (!argumentsValue) {
+      return { kind: "invalid", message: `The model did not provide one valid typed argument object for ${definition.name}.` };
+    }
+    return {
+      kind: "native",
+      proposal: { action: definition.name, arguments: argumentsValue },
+    };
   }
   return { kind: "invalid", message: `The model returned unsupported action ${action || "unknown"}.` };
 }
@@ -211,12 +242,23 @@ function mcpActionPromptLines(tools: AgenticMcpToolDefinition[]) {
   });
 }
 
+function nativeActionPromptLines(actions: AgenticNativeActionDefinition[]) {
+  let remaining = MAX_NATIVE_ACTION_PROMPT_CHARS;
+  return actions.flatMap((action) => {
+    const line = `- ACTION:native:${action.name} - ${action.description}; arguments ${action.argumentShape}`;
+    if (line.length > remaining) return [];
+    remaining -= line.length;
+    return [line];
+  });
+}
+
 export function buildAgenticTurnPrompt(input: {
   basePrompt: string;
   request: string;
   tools: AgenticReadToolDefinition[];
   observations: string[];
   mcpTools?: AgenticMcpToolDefinition[];
+  nativeActions?: AgenticNativeActionDefinition[];
   forceAnswer?: boolean;
   actionsUsed?: number;
   maxActions?: number;
@@ -228,6 +270,7 @@ export function buildAgenticTurnPrompt(input: {
         "- ACTION:answer",
         "- ACTION:blocked",
         ...input.tools.map((tool) => `- ACTION:tool:${tool.name} - ${tool.description}`),
+        ...nativeActionPromptLines(input.nativeActions || []),
         ...mcpActionPromptLines(input.mcpTools || []),
       ];
   const controller = [
@@ -237,9 +280,10 @@ export function buildAgenticTurnPrompt(input: {
     "If the user asks for a fact about the approved folder or codebase and no relevant tool result is supplied, you must choose a read tool and must not answer yet.",
     "Before claiming that a local table, routine, connection, service, or approved tool exists or is unavailable, you must use its matching list tool when that tool is available and no relevant result is supplied.",
     "When the user asks to connect or use an account, inspect the reviewed connection registry first. Never imply that listing a connection invokes it.",
+    "Choose a native action only when it directly fulfills an explicit request to change local Codelit data. A native action never grants new access or permission.",
     "Choose an MCP action only when it directly advances the current request. MCP calls never run immediately: Codelit will show the exact call for user approval.",
     "After an approved action, inspect its returned result and continue with another bounded action only when needed. Never repeat a completed external action.",
-    `For an MCP action, the second item must be exactly ${MCP_ARGUMENTS_PREFIX}{\"field\":\"typed value\"} using only fields and types from that tool's input schema. Do not put credentials in arguments.`,
+    `For a native or MCP action, the second item must be exactly ${MCP_ARGUMENTS_PREFIX}{\"field\":\"typed value\"} using only fields and types from that action's input schema. Do not put credentials in arguments.`,
     'Return exactly one JSON object matching {"summary":"short progress or complete answer","items":["ACTION:value"]}.',
     "The first item in the required items array must be exactly one of the ACTION values below.",
     "For a tool action, make summary a short progress message. For answer or blocked, make summary the complete user-facing response.",
@@ -291,9 +335,11 @@ export async function runAgenticReadLoop(input: {
   tools: AgenticReadToolDefinition[];
   maxToolCalls: number;
   mcpTools?: AgenticMcpToolDefinition[];
+  nativeActions?: AgenticNativeActionDefinition[];
   checkpoint?: AgenticHarnessCheckpoint;
   invoke: (prompt: string, turn: number) => Promise<ProviderTaskResult>;
   execute: (tool: AgenticReadTool) => Promise<AgenticReadToolResult>;
+  executeNative?: (proposal: AgenticNativeActionProposal) => Promise<AgenticReadToolResult>;
 }): Promise<AgenticReadLoopResult> {
   const restored = input.checkpoint
     ? normalizeAgenticHarnessCheckpoint(input.checkpoint)
@@ -304,10 +350,14 @@ export async function runAgenticReadLoop(input: {
     .map((tool) => [tool.name, tool]));
   const availableMcpTools = (input.mcpTools || [])
     .filter((tool) => !restored.mcpCalls.includes(tool.reference));
+  const availableNativeActions = new Map((input.nativeActions || [])
+    .filter((action) => !restored.nativeCalls.includes(action.name))
+    .map((action) => [action.name, action]));
   const observations = [...restored.observations];
   const results: ProviderTaskResult[] = [];
   const completedTools = [...restored.completedTools];
   const toolCalls = [...restored.toolCalls];
+  const nativeCalls = [...restored.nativeCalls] as AgenticNativeAction[];
   const mcpCalls = [...restored.mcpCalls];
   const maxActions = Math.max(0, Math.min(MAX_HARNESS_ACTIONS, Math.floor(input.maxToolCalls)));
   const remainingActions = Math.max(0, maxActions - restored.actionCount);
@@ -319,13 +369,14 @@ export async function runAgenticReadLoop(input: {
   let recoveryAttempts = restored.recoveryAttempts;
   let forceAnswer = actionCount >= maxActions
     || modelTurns >= MAX_HARNESS_MODEL_TURNS - 1
-    || (available.size === 0 && availableMcpTools.length === 0);
+    || (available.size === 0 && availableNativeActions.size === 0 && availableMcpTools.length === 0);
 
   const checkpoint = (): AgenticHarnessCheckpoint => ({
     schemaVersion: 1,
     observations: boundedHarnessObservations(observations),
     completedTools: boundedHarnessCompletedTools(completedTools),
     toolCalls: [...toolCalls],
+    nativeCalls: [...nativeCalls],
     mcpCalls: [...mcpCalls],
     actionCount,
     modelTurns,
@@ -348,7 +399,27 @@ export async function runAgenticReadLoop(input: {
     }
     forceAnswer = actionCount >= maxActions
       || modelTurns >= MAX_HARNESS_MODEL_TURNS - 1
-      || (available.size === 0 && availableMcpTools.length === 0);
+      || (available.size === 0 && availableNativeActions.size === 0 && availableMcpTools.length === 0);
+  };
+
+  const executeNativeAction = async (proposal: AgenticNativeActionProposal) => {
+    nativeCalls.push(proposal.action);
+    actionCount += 1;
+    availableNativeActions.delete(proposal.action);
+    try {
+      if (!input.executeNative) throw new Error("This native action is not wired to the local runtime.");
+      const actionResult = await input.executeNative(proposal);
+      completedTools.push(...actionResult.completedTools);
+      observations.push(...(actionResult.context.length
+        ? actionResult.context
+        : [`Native action ${proposal.action} completed without a readable result.`]));
+    } catch (reason) {
+      const detail = reason instanceof Error ? reason.message : String(reason);
+      observations.push(`Native action ${proposal.action} stopped safely: ${detail.slice(0, 500)}`);
+    }
+    forceAnswer = actionCount >= maxActions
+      || modelTurns >= MAX_HARNESS_MODEL_TURNS - 1
+      || (available.size === 0 && availableNativeActions.size === 0 && availableMcpTools.length === 0);
   };
 
   const requiredTool = requiredGroundingTool(input.request, [...available.keys()]);
@@ -362,6 +433,7 @@ export async function runAgenticReadLoop(input: {
       tools: [...available.values()],
       observations,
       mcpTools: availableMcpTools,
+      nativeActions: [...availableNativeActions.values()],
       forceAnswer,
       actionsUsed: actionCount,
       maxActions,
@@ -381,6 +453,7 @@ export async function runAgenticReadLoop(input: {
         completedTools,
         modelTurns,
         toolCalls,
+        nativeCalls,
         checkpoint: checkpoint(),
       };
     }
@@ -392,7 +465,11 @@ export async function runAgenticReadLoop(input: {
       continue;
     }
 
-    const decision = parseAgenticDecision(result, availableMcpTools);
+    const decision = parseAgenticDecision(
+      result,
+      availableMcpTools,
+      [...availableNativeActions.values()],
+    );
     if (decision.kind === "answer" || decision.kind === "blocked") {
       return {
         result: aggregateResult(results, result, decision.answer),
@@ -400,6 +477,7 @@ export async function runAgenticReadLoop(input: {
         completedTools,
         modelTurns,
         toolCalls,
+        nativeCalls,
         checkpoint: checkpoint(),
       };
     }
@@ -421,16 +499,30 @@ export async function runAgenticReadLoop(input: {
         completedTools,
         modelTurns,
         toolCalls,
+        nativeCalls,
         mcpProposal: decision.proposal,
         checkpoint: checkpoint(),
       };
+    }
+    if (decision.kind === "native") {
+      if (forceAnswer || actionCount >= maxActions || !availableNativeActions.has(decision.proposal.action)) {
+        observations.push(`Native action ${decision.proposal.action} is not available again. Answer from the results already supplied.`);
+        recoveryAttempts += 1;
+        forceAnswer = recoveryAttempts >= MAX_RECOVERY_ATTEMPTS
+          || actionCount >= maxActions
+          || (available.size === 0 && availableNativeActions.size === 0 && availableMcpTools.length === 0);
+        continue;
+      }
+      await executeNativeAction(decision.proposal);
+      recoveryAttempts = 0;
+      continue;
     }
     if (forceAnswer || actionCount >= maxActions || !available.has(decision.tool)) {
       observations.push(`Tool ${decision.tool} is not available again. Answer from the results already supplied.`);
       recoveryAttempts += 1;
       forceAnswer = recoveryAttempts >= MAX_RECOVERY_ATTEMPTS
         || actionCount >= maxActions
-        || (available.size === 0 && availableMcpTools.length === 0);
+        || (available.size === 0 && availableNativeActions.size === 0 && availableMcpTools.length === 0);
       continue;
     }
 
@@ -449,6 +541,7 @@ export async function runAgenticReadLoop(input: {
     completedTools,
     modelTurns,
     toolCalls,
+    nativeCalls,
     checkpoint: checkpoint(),
   };
 }

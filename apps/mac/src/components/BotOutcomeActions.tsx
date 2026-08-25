@@ -2,8 +2,9 @@ import { MessageSquareText, Sparkles } from "lucide-react";
 import type { ThreadBlock } from "@/lib/workspace-thread";
 import {
   buildBotNextActions,
+  buildBotRecoveryActions,
   buildBotStarterOutcomes,
-  latestCompletedBotRequest,
+  latestBotOutcome,
   type BotOutcomeCapabilities,
 } from "../bot-outcomes";
 
@@ -22,9 +23,12 @@ export default function BotOutcomeActions({
   onSubmit,
   blocks = [],
 }: BotOutcomeActionsProps) {
+  const latestOutcome = mode === "next" ? latestBotOutcome(blocks) : null;
   const actions = mode === "starter"
     ? buildBotStarterOutcomes(capabilities)
-    : buildBotNextActions(latestCompletedBotRequest(blocks), capabilities);
+    : latestOutcome?.status === "completed"
+      ? buildBotNextActions(latestOutcome.request, capabilities, latestOutcome.repeatCount)
+      : buildBotRecoveryActions(latestOutcome);
   if (!actions.length) return null;
   if (mode === "starter") {
     return (

@@ -91,6 +91,7 @@ import {
   emptyAgenticHarnessCheckpoint,
   resumeAgenticHarnessCheckpoint,
 } from "./agentic-harness-checkpoint";
+import type { AgenticNativeActionProposal } from "./agentic-native-actions";
 import { buildBotPrompt } from "./bot-prompt";
 import {
   parseBrowserTeachingRequest,
@@ -101,7 +102,6 @@ import {
   type TaughtBrowserRecipeDraft,
 } from "./browser-teaching";
 import {
-  coerceBotTableValues,
   findBotTable,
   parseBotDataIntent,
   type BotDataIntent,
@@ -123,7 +123,6 @@ import {
   botSkillSnapshotMatches,
   botSkillVersions,
   classifyBotMemory,
-  createRoutineSnapshot,
   describeBotSkill,
   inferBotMemoryProposal,
   parseBotDelegationIntent,
@@ -180,7 +179,6 @@ import {
 } from "./provider-run-live";
 import {
   appendThreadMessage,
-  appendLocalBotTableRow,
   beginLocalRun,
   bootstrapBots,
   cancelIntelligenceTask,
@@ -193,7 +191,6 @@ import {
   createLocalBot,
   createLocalBotDelegation,
   createLocalBotMemoryProposal,
-  createLocalBotTable,
   deleteLocalEventRoutine,
   deleteLocalSchedule,
   deleteLocalBotMemory,
@@ -266,7 +263,6 @@ import {
   runComputerAction,
   renewEventRoutineOccurrenceLease,
   renewScheduleOccurrenceLease,
-  saveLocalEventRoutine,
   saveLocalSchedule,
   saveLocalBotMemory,
   saveLocalBotSkill,
@@ -2405,6 +2401,55 @@ export default function BotsApp() {
     }
   };
 
+  const executeNativeAgentAction = async (input: {
+    proposal: AgenticNativeActionProposal;
+    runBot: LocalBotRecord;
+    runSnapshot: NonNullable<typeof workspace>;
+    engine?: IntelligenceSelection;
+    nativeTeammates?: LocalBotRecord[];
+    hasApprovedProject?: boolean;
+  }) => {
+    if (input.proposal.action === "delegate" && !runDelegationTargetRef.current) {
+      throw new Error("The local teammate runner is not ready.");
+    }
+    const { executeAgenticNativeAction } = await import("./agentic-native-runtime");
+    const outcome = await executeAgenticNativeAction({
+      ...input,
+      nativeTeammates: input.nativeTeammates || [],
+      hasApprovedProject: Boolean(input.hasApprovedProject),
+    });
+    if (outcome.updatedBot) replaceBot(outcome.updatedBot);
+    if (outcome.goalChangedVersion) {
+      setBotChangeUndo({
+        kind: "goal",
+        botId: input.runBot.id,
+        changedVersion: outcome.goalChangedVersion,
+        previousGoal: input.runBot.spec.goal,
+        title: "Goal updated",
+        detail: `Before: ${compactChangeText(input.runBot.spec.goal.outcome)}. Now: ${compactChangeText(String(input.proposal.arguments.outcome))}.`,
+      });
+    }
+    if (outcome.tableView) revealBotTable(outcome.tableView);
+    if (outcome.schedule) {
+      setSchedules((current) => [
+        ...current.filter((schedule) => schedule.id !== outcome.schedule!.id),
+        outcome.schedule!,
+      ]);
+    }
+    if (outcome.eventRoutine) {
+      setEventRoutines((current) => [
+        ...current.filter((routine) => routine.id !== outcome.eventRoutine!.id),
+        outcome.eventRoutine!,
+      ]);
+    }
+    if (outcome.delegation) {
+      const runner = runDelegationTargetRef.current!;
+      replaceDelegation(outcome.delegation);
+      void Promise.all(outcome.delegation.targets.map((target) => runner(outcome.delegation!, target)));
+    }
+    return outcome;
+  };
+
   const runBotHarness = async (input: {
     runBot: LocalBotRecord;
     runSnapshot: NonNullable<typeof workspace>;
@@ -2418,6 +2463,7 @@ export default function BotsApp() {
     events: ProviderRunEvent[];
     providerInvocation: { started: boolean };
     checkpoint?: AgenticHarnessCheckpoint;
+    allowNativeActions?: boolean;
   }): Promise<AgenticReadLoopResult> => {
     const {
       runBot,
@@ -2437,6 +2483,14 @@ export default function BotsApp() {
     const folderIsProject = selectedFolderMatchesPurpose(runSnapshot.workspaceFolder?.path, "project");
     const availableTools = agenticReadToolsForWorkspace(hasApprovedFolder, folderIsProject);
     const chatMcpTools = mcpToolsForChat(request, connectedMcpServers);
+    const { buildAgenticNativeActions } = await import("./agentic-native-actions");
+    const nativeTeammates = runBot.id === activeBotIdRef.current ? activeGroupMembers : [];
+    let nativeRunBot = runBot;
+    const nativeActions = input.allowNativeActions === false ? [] : buildAgenticNativeActions({
+      hasProject: hasApprovedFolder && folderIsProject,
+      schedulesAvailable,
+      teammateNames: nativeTeammates.map((teammate) => teammate.name),
+    });
     const onRunEvent = (event: ProviderRunEvent) => consumeRunEvent(runBot.id, event, events);
     const { runAgenticReadLoop } = await import("./agentic-read-loop");
     return runAgenticReadLoop({
@@ -2445,6 +2499,7 @@ export default function BotsApp() {
       tools: availableTools,
       maxToolCalls: runBot.spec.autonomyPolicy.maxActionsPerRun,
       mcpTools: chatMcpTools,
+      nativeActions,
       ...(checkpoint ? { checkpoint } : {}),
       invoke: async (turnPrompt, turn) => {
         if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
@@ -2526,6 +2581,27 @@ export default function BotsApp() {
           throw new Error(events.at(-1)?.message || "Codelit could not read the approved folder.");
         }
         return { context: toolResult.context, completedTools: toolResult.completedTools };
+      },
+      executeNative: async (proposal: AgenticNativeActionProposal) => {
+        if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
+        await changeBotStatus(runBot.id, "working", {
+          set_goal: "Updating the goal",
+          create_routine: "Preparing a local routine",
+          watch_project: "Preparing project monitoring",
+          create_table: "Creating a local table",
+          add_table_row: "Updating a local table",
+          delegate: "Briefing the team",
+        }[proposal.action]);
+        const outcome = await executeNativeAgentAction({
+          proposal,
+          runBot: nativeRunBot,
+          runSnapshot,
+          engine,
+          nativeTeammates,
+          hasApprovedProject: hasApprovedFolder && folderIsProject,
+        });
+        if (outcome.updatedBot) nativeRunBot = outcome.updatedBot;
+        return { context: outcome.context, completedTools: outcome.completedTools };
       },
     });
   };
@@ -4072,19 +4148,19 @@ export default function BotsApp() {
       return;
     }
     if (intent.kind === "create-table") {
-      const view = await createLocalBotTable({
-        id: `table-${crypto.randomUUID()}`,
-        botId: runBot.id,
-        name: intent.name,
-        columns: intent.columns,
-        createdAt: new Date().toISOString(),
+      const outcome = await executeNativeAgentAction({
+        proposal: {
+          action: "create_table",
+          arguments: { name: intent.name, columns: intent.columns },
+        },
+        runBot,
+        runSnapshot: runWorkspace,
       });
-      revealBotTable(view);
       await appendControlExchange(
         runBot,
         runWorkspace,
         submitted,
-        `Created **${escapeBotMarkdown(view.table.name)}** with ${view.table.columns.length} columns. It is private to this bot and stored only on this Mac.`,
+        outcome.context[0],
       );
       return;
     }
@@ -4101,19 +4177,19 @@ export default function BotsApp() {
       return;
     }
     if (intent.kind === "add-row") {
-      const view = await appendLocalBotTableRow({
-        id: `row-${crypto.randomUUID()}`,
-        botId: runBot.id,
-        tableId: table.id,
-        values: coerceBotTableValues(table, intent.values),
-        createdAt: new Date().toISOString(),
+      const outcome = await executeNativeAgentAction({
+        proposal: {
+          action: "add_table_row",
+          arguments: { tableName: table.name, values: intent.values },
+        },
+        runBot,
+        runSnapshot: runWorkspace,
       });
-      revealBotTable(view);
       await appendControlExchange(
         runBot,
         runWorkspace,
         submitted,
-        `Added one row to **${escapeBotMarkdown(table.name)}**. It now has ${view.totalRows} ${view.totalRows === 1 ? "row" : "rows"}.`,
+        outcome.context[0],
       );
       return;
     }
@@ -4280,20 +4356,15 @@ export default function BotsApp() {
       return true;
     }
     if (intent.kind === "set-goal") {
-      const updatedAt = new Date().toISOString();
-      await changeGoal(
+      const outcome = await executeNativeAgentAction({
+        proposal: { action: "set_goal", arguments: { outcome: intent.outcome } },
         runBot,
+        runSnapshot: runWorkspace,
+      });
+      await appendControlExchange(
+        outcome.updatedBot || runBot,
         runWorkspace,
         submitted,
-        {
-          ...runBot.spec.goal,
-          outcome: intent.outcome,
-          status: "active",
-          nextAction: "Take the smallest useful read-only step with the context available now.",
-          updatedAt,
-        },
-        "Goal updated",
-        `Before: ${compactChangeText(runBot.spec.goal.outcome)}. Now: ${compactChangeText(intent.outcome)}.`,
         `Changed the goal to **${escapeBotMarkdown(intent.outcome)}**. I will use it to choose the next useful step.`,
       );
       return true;
@@ -4733,125 +4804,50 @@ export default function BotsApp() {
       setBotFeedback(runBot.id, { error: "Set up one local intelligence engine before creating a routine." });
       return true;
     }
-    const createdAt = new Date().toISOString();
-    const routineId = `routine-${crypto.randomUUID()}`;
-    const title = intent.prompt.length > 72 ? `${intent.prompt.slice(0, 69).trim()}...` : intent.prompt;
-    setRoutineAction(routineId);
+    setRoutineAction("preparing-routine");
     try {
-      if (intent.kind === "watch-project") {
-        let approvedWorkspace = runWorkspace;
-        if (!approvedWorkspace.workspaceFolder?.accessValidated) {
-          const selected = await chooseWorkspaceFolder();
-          if (!selected) {
-            await appendControlExchange(
-              runBot,
-              runWorkspace,
-              submitted,
-              "I did not start the routine because no project folder was chosen.",
-            );
-            return true;
-          }
-          const refreshed = await bootstrapBots();
-          setCatalog(refreshed);
-          approvedWorkspace = refreshed.activeBot.id === runBot.id
-            ? refreshed.workspace
-            : (await openLocalBotContext(runBot.id)).workspace;
-          if (!approvedWorkspace.workspaceFolder?.accessValidated) {
-            throw new Error("Codelit could not confirm read-only access to that project folder.");
-          }
-        }
-        const [currentMemories, currentSkills] = await Promise.all([
-          listLocalBotMemories(runBot.id),
-          listLocalBotSkills(),
-        ]);
-        const selectedSkills = skillsForBotRequest(currentSkills, intent.prompt);
-        const saved = await saveLocalEventRoutine({
-          id: routineId,
-          botId: runBot.id,
-          title,
-          prompt: intent.prompt,
-          trigger: {
-            kind: "project-change",
-            label: intent.triggerLabel,
-            debounceSeconds: 30,
-            cooldownMinutes: 5,
-          },
-          budget: {
-            maxActions: Math.max(1, Math.min(8, runBot.spec.autonomyPolicy.maxActionsPerRun)),
-            maxRetries: 2,
-          },
-          provider: runEngine.provider,
-          model: runEngine.model,
-          requiresNetwork: !["mlx", "ollama", "lmstudio"].includes(runEngine.provider)
-            || parseBotBrowserTarget(intent.prompt).kind === "target",
-          botSnapshot: runBot.spec,
-          memorySnapshotHash: await botMemorySnapshotHash(currentMemories),
-          skillVersions: botSkillVersions(selectedSkills),
-          createdAt,
-        });
-        let updated: LocalBotRecord;
-        try {
-          updated = await updateLocalBotRoutines(
-            runBot.id,
-            [...new Set([...runBot.spec.routineIds, routineId])],
-            false,
+      let approvedWorkspace = runWorkspace;
+      if (intent.kind === "watch-project" && !approvedWorkspace.workspaceFolder?.accessValidated) {
+        const selected = await chooseWorkspaceFolder();
+        if (!selected) {
+          await appendControlExchange(
+            runBot,
+            runWorkspace,
+            submitted,
+            "I did not prepare the routine because no project folder was chosen.",
           );
-        } catch (reason) {
-          await deleteLocalEventRoutine(saved.id).catch(() => undefined);
-          throw reason;
+          return true;
         }
-        replaceBot(updated);
-        setEventRoutines((current) => [...current.filter((routine) => routine.id !== saved.id), saved]);
-        await appendControlExchange(
-          updated,
-          approvedWorkspace,
-          submitted,
-          `I prepared **${intent.triggerLabel}**. Review the routine below, then start it with one click.`,
-        );
-        return true;
+        const refreshed = await bootstrapBots();
+        setCatalog(refreshed);
+        approvedWorkspace = refreshed.activeBot.id === runBot.id
+          ? refreshed.workspace
+          : (await openLocalBotContext(runBot.id)).workspace;
+        if (!approvedWorkspace.workspaceFolder?.accessValidated) {
+          throw new Error("Codelit could not confirm read-only access to that project folder.");
+        }
       }
-      const artifact = runWorkspace.artifacts.find(
-        (candidate) => candidate.artifactId === "artifact-plan-ship-local",
-      );
-      if (!artifact) {
-        setBotFeedback(runBot.id, { error: "The local routine boundary is unavailable. Reopen Codelit and try again." });
-        return true;
-      }
-      const saved = await saveLocalSchedule({
-        id: routineId,
-        threadId: runBot.threadId,
-        artifactId: artifact.artifactId,
-        artifactVersion: artifact.version,
-        title,
-        enabled: false,
-        cadence: intent.cadence,
-        localTime: intent.localTime,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        weekdays: intent.weekdays,
-        missedPolicy: "run-once",
-        maxRetries: 2,
-        provider: runEngine.provider,
-        model: runEngine.model,
-        requiresNetwork: !["mlx", "ollama", "lmstudio"].includes(runEngine.provider)
-          || parseBotBrowserTarget(intent.prompt).kind === "target",
-        snapshot: createRoutineSnapshot(runBot, routineId, intent.prompt, intent.triggerLabel, createdAt),
+      const proposal: AgenticNativeActionProposal = intent.kind === "watch-project"
+        ? { action: "watch_project", arguments: { prompt: intent.prompt } }
+        : {
+            action: "create_routine",
+            arguments: {
+              prompt: intent.prompt,
+              cadence: intent.cadence,
+              localTime: intent.localTime,
+              weekdays: intent.weekdays,
+            },
+          };
+      const outcome = await executeNativeAgentAction({
+        proposal,
+        runBot,
+        runSnapshot: approvedWorkspace,
+        engine: runEngine,
+        hasApprovedProject: Boolean(approvedWorkspace.workspaceFolder?.accessValidated),
       });
-      let updated: LocalBotRecord;
-      try {
-        updated = await updateLocalBotRoutines(
-          runBot.id,
-          [...new Set([...runBot.spec.routineIds, routineId])],
-          false,
-        );
-      } catch (reason) {
-        await deleteLocalSchedule(saved.id).catch(() => undefined);
-        throw reason;
-      }
-      replaceBot(updated);
-      setSchedules((current) => [...current.filter((schedule) => schedule.id !== saved.id), saved]);
       await appendControlExchange(
-        updated,
-        runWorkspace,
+        outcome.updatedBot || runBot,
+        approvedWorkspace,
         submitted,
         `I prepared **${intent.triggerLabel}**. Review the routine below, then start it with one click.`,
       );
@@ -6089,7 +6085,7 @@ export default function BotsApp() {
         skillPreparation.promptContext,
       );
       let result: ProviderTaskResult;
-      let agentLoop: { modelTurns: number; toolCalls: string[] } | undefined;
+      let agentLoop: { modelTurns: number; toolCalls: string[]; nativeCalls: string[] } | undefined;
       {
         const connectedMcpServers = !options.routine && !options.delegation
           ? await listLocalMcpServers()
@@ -6106,10 +6102,15 @@ export default function BotsApp() {
           connectedMcpServers,
           events,
           providerInvocation,
+          allowNativeActions: !options.routine && !options.delegation,
         });
         result = loop.result;
         completedTools = loop.completedTools;
-        agentLoop = { modelTurns: loop.modelTurns, toolCalls: loop.toolCalls };
+        agentLoop = {
+          modelTurns: loop.modelTurns,
+          toolCalls: loop.toolCalls,
+          nativeCalls: loop.nativeCalls,
+        };
         if (loop.mcpProposal) {
           const staged = await stageMcpHarnessApproval({
             loop,

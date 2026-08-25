@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { requiredGroundingTool } from "../../apps/mac/src/agentic-read-loop";
+import { parseAgenticDecision, requiredGroundingTool } from "../../apps/mac/src/agentic-read-loop";
+import { buildAgenticNativeActions, type AgenticNativeAction } from "../../apps/mac/src/agentic-native-actions";
 import type { LocalBotRecord } from "../../apps/mac/src/contracts";
 import { parseBotDataIntent } from "../../apps/mac/src/bot-data";
 import { parseBotControlIntent, parseBotDelegationIntent } from "../../apps/mac/src/bot-initiative";
@@ -11,9 +12,11 @@ import { localConversationReply, parseLocalFileIntent } from "../../apps/mac/src
 
 interface GoldenTask {
   id: string;
-  lane: "browser-action" | "browser-read" | "computer-read" | "control" | "conversation" | "data" | "delegation" | "grounded-harness" | "project-read";
+  lane: "browser-action" | "browser-read" | "computer-read" | "control" | "conversation" | "data" | "delegation" | "grounded-harness" | "native-action" | "project-read";
   request: string;
   expectedTool?: string;
+  expectedNativeAction?: AgenticNativeAction;
+  controllerItems?: string[];
 }
 
 const fixture = JSON.parse(readFileSync(
@@ -29,9 +32,15 @@ const groundedTools = [
   "list_connected_tools",
 ] as const;
 
+const nativeActions = buildAgenticNativeActions({
+  hasProject: true,
+  schedulesAvailable: true,
+  teammateNames: ["Reviewer"],
+});
+
 describe("Mac harness golden tasks", () => {
   it("keeps a compact, unique release gate across every user-facing execution lane", () => {
-    expect(fixture.schemaVersion).toBe(1);
+    expect(fixture.schemaVersion).toBe(2);
     expect(fixture.tasks.length).toBeGreaterThanOrEqual(12);
     expect(new Set(fixture.tasks.map((task) => task.id)).size).toBe(fixture.tasks.length);
     expect(new Set(fixture.tasks.map((task) => task.lane))).toEqual(new Set([
@@ -43,6 +52,7 @@ describe("Mac harness golden tasks", () => {
       "data",
       "delegation",
       "grounded-harness",
+      "native-action",
       "project-read",
     ]));
   });
@@ -76,6 +86,21 @@ describe("Mac harness golden tasks", () => {
         });
       } else if (task.lane === "grounded-harness") {
         expect(requiredGroundingTool(task.request, [...groundedTools])).toBe(task.expectedTool);
+      } else if (task.lane === "native-action") {
+        expect(parseAgenticDecision({
+          runId: `run-${task.id}`,
+          provider: "mlx",
+          model: "golden-controller",
+          status: "completed",
+          structuredOutput: { summary: "Taking the requested local action", items: task.controllerItems || [] },
+          text: "Taking the requested local action",
+          durationMs: 1,
+          commandPath: "golden-fixture",
+          evidence: [],
+        }, [], nativeActions)).toMatchObject({
+          kind: "native",
+          proposal: { action: task.expectedNativeAction },
+        });
       } else if (task.lane === "data") {
         expect(parseBotDataIntent(task.request)).toMatchObject({ kind: "create-table" });
       } else {

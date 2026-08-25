@@ -7,7 +7,8 @@ export const desktopRendererBundleBudget = {
   entryBytes: 500_000,
   initialGzipBytes: 150_000,
   largestDeferredGzipBytes: 55_000,
-  totalGzipBytes: 215_000,
+  // Typed native actions stay deferred; keep startup fixed while bounding the optional harness surface.
+  totalGzipBytes: 218_000,
 };
 
 const requiredDeferredChunks = [

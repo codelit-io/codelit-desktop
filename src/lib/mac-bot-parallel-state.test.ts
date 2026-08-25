@@ -204,6 +204,7 @@ describe("Mac bot parallel execution state", () => {
         observations: ["Reviewed connection registry"],
         completedTools: [{ toolId: "local-connections", toolName: "Local connections" }],
         toolCalls: ["list_connected_tools" as const],
+        nativeCalls: [],
         mcpCalls: [],
         actionCount: 1,
         modelTurns: 2,
