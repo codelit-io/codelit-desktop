@@ -81,7 +81,7 @@
       { "file": "01-local-bot.png", "caption": "A private AI bot that works on your Mac" },
       { "file": "02-bot-team.png", "caption": "Bring specialist bots into one conversation" },
       { "file": "03-memory-and-skills.png", "caption": "Keep approved memory and reusable skills" },
-      { "file": "04-run-receipt.png", "caption": "Complete useful work with private on-device intelligence" }
+      { "file": "04-run-receipt.png", "caption": "Inspect a local project with private, read-only access" }
     ]
   }
 }
