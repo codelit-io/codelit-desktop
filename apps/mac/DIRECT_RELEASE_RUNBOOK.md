@@ -45,6 +45,7 @@ From the repository root, export credentials without printing them:
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
 export TAURI_SIGNING_PRIVATE_KEY_PATH="/path/from/your/secret-store/updater.key"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(your-secret-store read updater-password)"
 ```

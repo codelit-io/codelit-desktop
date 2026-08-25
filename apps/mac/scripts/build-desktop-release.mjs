@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import {
   appStoreEntitlementBody,
   appStoreProvisioningIdentifiers,
+  auditDirectPreNotarizationSignatures,
   auditBuiltBundle,
   bundlePath,
   directDmgPath,
@@ -59,6 +60,7 @@ if (options.adhoc) {
 run("npm", tauriArguments, { cwd: repositoryRoot, env: buildEnvironment });
 
 if (!options.adhoc && options.channel === "direct") {
+  auditDirectPreNotarizationSignatures();
   const dmgPath = directDmgPath(readiness.version);
   run("xcrun", [
     "notarytool", "submit", dmgPath,

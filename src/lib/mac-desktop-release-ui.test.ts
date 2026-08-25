@@ -56,7 +56,7 @@ describe("Codelit for Mac release channels", () => {
   });
 
   it("requires explicit Apple assets for production release commands", () => {
-    expect(releaseSupport).toContain("Install a Developer ID Application signing identity.");
+    expect(releaseSupport).toContain("Install a Developer ID Application signing identity, then set APPLE_SIGNING_IDENTITY");
     expect(releaseSupport).toContain("Mac App Distribution certificate name");
     expect(releaseSupport).toContain("Mac Installer Distribution certificate name");
     expect(releaseSupport).toContain("installed Mac Installer Distribution identity");
@@ -70,6 +70,10 @@ describe("Codelit for Mac release channels", () => {
     expect(releaseScript).toContain('options.channel === "direct" && !options.adhoc');
     expect(releaseScript).toContain("readFileSync(process.env.TAURI_SIGNING_PRIVATE_KEY_PATH");
     expect(releaseScript).toContain("TAURI_SIGNING_PRIVATE_KEY: updaterPrivateKey");
+    expect(releaseScript).toContain("auditDirectPreNotarizationSignatures();");
+    expect(releaseScript.indexOf("auditDirectPreNotarizationSignatures();")).toBeLessThan(
+      releaseScript.indexOf('"notarytool", "submit", dmgPath'),
+    );
     expect(releaseScript).toContain("directDmgPath(readiness.version)");
     expect(releaseScript).toContain('"notarytool", "submit", dmgPath');
     expect(releaseScript).toContain('"stapler", "staple", dmgPath');

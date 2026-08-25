@@ -200,8 +200,10 @@ export function signingIdentityIssues({ channel, environment, codeIdentities, al
       if (!identity.startsWith("Developer ID Application:") || !codeIdentities.includes(identity)) {
         issues.push("APPLE_SIGNING_IDENTITY must name an installed Developer ID Application identity.");
       }
-    } else if (!codeIdentities.some((candidate) => candidate.startsWith("Developer ID Application:"))) {
-      issues.push("Install a Developer ID Application signing identity.");
+    } else if (codeIdentities.some((candidate) => candidate.startsWith("Developer ID Application:"))) {
+      issues.push("Set APPLE_SIGNING_IDENTITY to the exact installed Developer ID Application certificate name.");
+    } else {
+      issues.push("Install a Developer ID Application signing identity, then set APPLE_SIGNING_IDENTITY to its exact certificate name.");
     }
     return issues;
   }
@@ -411,6 +413,35 @@ export function run(command, args, options = {}) {
     throw new Error(`${command} failed with exit code ${result.status ?? "unknown"}.`);
   }
   return options.capture ? `${result.stdout || ""}${result.stderr || ""}`.trim() : "";
+}
+
+export function developerIdSignatureIssues(label, details) {
+  const issues = [];
+  if (!/^Authority=Developer ID Application:/m.test(details)) {
+    issues.push(`${label} is not signed by a Developer ID Application certificate.`);
+  }
+  if (!/^Timestamp=/m.test(details)) {
+    issues.push(`${label} is missing a secure signing timestamp.`);
+  }
+  if (!/flags=0x[0-9a-f]+\([^)]*runtime[^)]*\)/im.test(details)) {
+    issues.push(`${label} does not have Hardened Runtime enabled.`);
+  }
+  return issues;
+}
+
+export function auditDirectPreNotarizationSignatures() {
+  const targets = [
+    ["Codelit.app", bundlePath],
+    ["codelit-mlx-helper", resolve(bundlePath, "Contents/MacOS/codelit-mlx-helper")],
+    ["codelit-scheduler-helper", resolve(bundlePath, "Contents/MacOS/codelit-scheduler-helper")],
+  ];
+  run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", bundlePath]);
+  const issues = targets.flatMap(([label, path]) => {
+    if (!existsSync(path)) return [`${label} is missing before notarization.`];
+    const details = run("codesign", ["-dv", "--verbose=4", path], { capture: true });
+    return developerIdSignatureIssues(label, details);
+  });
+  if (issues.length) throw new Error(issues.join(" "));
 }
 
 export function auditBuiltBundle(channel, { production = false } = {}) {
