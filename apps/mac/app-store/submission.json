@@ -4,7 +4,7 @@
     "name": "Codelit",
     "subtitle": "Private AI bots for Mac",
     "bundleId": "io.codelit.desktop",
-    "build": "15",
+    "build": "16",
     "sku": "codelit-mac",
     "platform": "macOS",
     "minimumSystemVersion": "14.0",
@@ -75,13 +75,13 @@
     "whatToTestFile": "TESTFLIGHT.md"
   },
   "screenshots": {
-    "width": 1440,
-    "height": 900,
+    "width": 2880,
+    "height": 1800,
     "slots": [
       { "file": "01-local-bot.png", "caption": "A private AI bot that works on your Mac" },
       { "file": "02-bot-team.png", "caption": "Bring specialist bots into one conversation" },
       { "file": "03-memory-and-skills.png", "caption": "Keep approved memory and reusable skills" },
-      { "file": "04-run-receipt.png", "caption": "Inspect every local run and its receipt" }
+      { "file": "04-run-receipt.png", "caption": "Complete useful work with private on-device intelligence" }
     ]
   }
 }

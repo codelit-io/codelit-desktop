@@ -41,7 +41,7 @@
     },
     "macOS": {
       "minimumSystemVersion": "14.0",
-      "bundleVersion": "15"
+      "bundleVersion": "16"
     },
     "icon": [
       "icons/32x32.png",

@@ -176,6 +176,7 @@ import {
   finalAnswerReconciliation,
   formatProviderFinalAnswer,
   isTransientProviderRunEvent,
+  resolveAutoStartFinalAnswer,
 } from "./provider-run-live";
 import {
   appendThreadMessage,
@@ -431,6 +432,7 @@ interface BotTaskOptions {
   engine?: IntelligenceSelection;
   runId?: string;
   appendUser?: boolean;
+  autoStart?: boolean;
   routine?: { id: string; title: string; scheduledFor: string };
   delegation?: LocalBotDelegationRunContext;
 }
@@ -6154,7 +6156,10 @@ export default function BotsApp() {
       let completed = runSnapshot;
       let finalAnswer: string | undefined;
       if (recordedResult.status === "completed" && recordedResult.structuredOutput) {
-        finalAnswer = formatProviderFinalAnswer(recordedResult.structuredOutput);
+        const formattedAnswer = formatProviderFinalAnswer(recordedResult.structuredOutput);
+        finalAnswer = options.autoStart
+          ? resolveAutoStartFinalAnswer(formattedAnswer)
+          : formattedAnswer;
         skillRunReceipts = completeBotSkillChecks(runSkills, skillRunReceipts, finalAnswer);
         if (!botSkillChecksPassed(skillRunReceipts)) {
           throw new Error("A selected skill did not produce its required output. Review the run receipt before retrying.");
@@ -6541,6 +6546,7 @@ export default function BotsApp() {
       workspace: runWorkspace,
       engine,
       appendUser: false,
+      autoStart: true,
     });
   }, [autoStartBotId, bot, engine, hasAnyActiveRun, runState, workspace]);
 

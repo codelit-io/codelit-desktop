@@ -78,6 +78,13 @@ export function formatProviderFinalAnswer(output: ProviderStructuredOutput) {
   return lines.join("\n");
 }
 
+export function resolveAutoStartFinalAnswer(answer: string) {
+  const value = answer.trim();
+  return /^(?:answer:\s*)?(?:none|n\/a)\.?$/i.test(value)
+    ? "What should I work on first?"
+    : value;
+}
+
 export function providerRunReceiptSummary(
   result: Pick<ProviderTaskResult, "structuredOutput" | "text">,
   summaryOverride?: string,

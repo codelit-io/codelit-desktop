@@ -10,6 +10,7 @@ import {
   PROVIDER_FINAL_OUTPUT_LIMITS,
   recordableProviderRunEvents,
   reduceProviderLiveState,
+  resolveAutoStartFinalAnswer,
   utf8ByteLength,
 } from "../../apps/mac/src/provider-run-live";
 import {
@@ -158,6 +159,17 @@ describe("Mac provider live response state", () => {
     expect(utf8ByteLength(answer)).toBeLessThanOrEqual(PROVIDER_FINAL_OUTPUT_LIMITS.answerBytes);
     expect(utf8ByteLength(answer.split("\n")[0])).toBe(PROVIDER_FINAL_OUTPUT_LIMITS.summaryBytes);
     expect(answer).not.toContain("�");
+  });
+
+  it("turns empty proactive startup output into one useful question", () => {
+    expect(resolveAutoStartFinalAnswer("Answer: None."))
+      .toBe("What should I work on first?");
+    expect(resolveAutoStartFinalAnswer("None"))
+      .toBe("What should I work on first?");
+    expect(resolveAutoStartFinalAnswer("N/A"))
+      .toBe("What should I work on first?");
+    expect(resolveAutoStartFinalAnswer("The release is ready."))
+      .toBe("The release is ready.");
   });
 
   it("keeps token deltas out of the durable run event stream", () => {
