@@ -19,11 +19,15 @@
     "desktop:mlx:build": "cd apps/mac/native/mlx-helper && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -quiet -scheme CodelitMLXHelper -destination 'platform=macOS,arch=arm64' -configuration Release -derivedDataPath \"${TMPDIR:-/tmp}/codelit-mlx-build\" -skipPackagePluginValidation -skipMacroValidation CODE_SIGNING_ALLOWED=NO",
     "desktop:mlx:stage": "node apps/mac/scripts/prepare-mlx-sidecar.mjs",
     "desktop:scheduler:build": "node apps/mac/scripts/build-scheduler-helper.mjs",
+    "desktop:release:direct": "node apps/mac/scripts/build-desktop-release.mjs --channel direct",
+    "desktop:release:app-store": "node apps/mac/scripts/build-desktop-release.mjs --channel app-store",
     "desktop:release:check": "node apps/mac/scripts/check-desktop-release.mjs",
     "desktop:release:prepare": "node apps/mac/scripts/prepare-desktop-release.mjs",
     "desktop:release:verify": "node apps/mac/scripts/verify-desktop-release.mjs",
     "desktop:release:publish-assets": "node apps/mac/scripts/publish-direct-release-assets.mjs",
     "desktop:release:activate": "node apps/mac/scripts/activate-direct-release.mjs",
+    "desktop:qa:candidate:draft": "node apps/mac/scripts/create-desktop-candidate-qa.mjs",
+    "desktop:qa:candidate:check": "node apps/mac/scripts/check-desktop-candidate-qa.mjs",
     "desktop:app-store:check": "node apps/mac/scripts/check-app-store-submission.mjs"
   },
   "devDependencies": {
