@@ -224,6 +224,57 @@ describe("Mac bounded agentic read loop", () => {
     expect(invoke.mock.calls[0][0]).not.toContain("ACTION:mcp:mcp::gmail::send_email");
   });
 
+  it("forces a final response before a checkpoint can strand another approval at the turn ceiling", async () => {
+    const invoke = vi.fn().mockResolvedValue(result("Trying another call", [
+      "ACTION:mcp:mcp::gmail::send_email",
+      'ARGUMENTS:{"to":"mo@example.com","subject":"Status"}',
+    ]));
+    const completed = await runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "Finish the status update",
+      tools,
+      mcpTools,
+      checkpoint: {
+        schemaVersion: 1,
+        observations: ["The prior action completed."],
+        completedTools: [],
+        toolCalls: [],
+        mcpCalls: [],
+        actionCount: 0,
+        modelTurns: 23,
+        recoveryAttempts: 0,
+      },
+      maxToolCalls: 5,
+      invoke,
+      execute: vi.fn(),
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0][0]).not.toContain("ACTION:mcp:mcp::gmail::send_email");
+    expect(completed.mcpProposal).toBeUndefined();
+    expect(completed.answer).not.toContain("ACTION:");
+  });
+
+  it("rejects an already exhausted checkpoint with a useful bounded-run error", async () => {
+    await expect(runAgenticReadLoop({
+      basePrompt: "You are helpful.",
+      request: "Continue",
+      tools,
+      checkpoint: {
+        schemaVersion: 1,
+        observations: [],
+        completedTools: [],
+        toolCalls: [],
+        mcpCalls: [],
+        actionCount: 0,
+        modelTurns: 24,
+        recoveryAttempts: 0,
+      },
+      maxToolCalls: 5,
+      invoke: vi.fn(),
+      execute: vi.fn(),
+    })).rejects.toThrow("exhausted its bounded model-turn budget");
+  });
+
   it("rejects tampered or duplicate persisted harness checkpoints", () => {
     const checkpoint = resumeAgenticHarnessCheckpoint({
       schemaVersion: 1,

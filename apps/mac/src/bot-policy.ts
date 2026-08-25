@@ -420,6 +420,28 @@ export function parseBotBrowserAction(prompt: string): BotBrowserActionResult {
     };
   }
 
+  const unquotedClick = normalized.match(new RegExp(
+    `\\b(?:click|press)\\s+(?:the\\s+)?([^"\\n]{1,100}?)(?:\\s+button)?\\s+(?:on|at)\\s+${WEB_TARGET.source}`,
+    "i",
+  ));
+  if (unquotedClick) {
+    const targetLabel = unquotedClick[1].trim();
+    if (!targetLabel) {
+      return { kind: "invalid", message: "Name one visible control to click." };
+    }
+    return {
+      kind: "action",
+      request: {
+        url: page.url,
+        host: page.host,
+        action: "click",
+        target: `label:${targetLabel}`,
+        targetLabel,
+        valueLength: 0,
+      },
+    };
+  }
+
   return {
     kind: "invalid",
     message: 'Use an exact action such as Click "Pricing" on https://example.com, Type "hello" into "Search" on https://example.com, or Download "Report" from https://example.com.',

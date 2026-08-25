@@ -88,7 +88,7 @@ describe("Codelit Bots provider policy", () => {
       kind: "target",
       host: "codelit.io",
     });
-    expect(botsApp).toContain("BOTS_P1_BETA_POLICY.starterTasks.map");
+    expect(botsApp).toContain('lazy(() => import("./components/BotOutcomeActions"))');
     expect(botsApp).toContain("Export all local data");
     expect(botsApp).toContain("Delete local workspace");
     expect(botsApp).toContain("await deleteLocalWorkspace(deleteWorkspaceConfirmation)");
@@ -273,7 +273,10 @@ describe("Codelit Bots provider policy", () => {
         valueLength: 0,
       },
     });
-    expect(parseBotBrowserAction("Click Pricing on https://codelit.io")).toMatchObject({ kind: "invalid" });
+    expect(parseBotBrowserAction("Click Pricing on https://codelit.io")).toMatchObject({
+      kind: "action",
+      request: { action: "click", targetLabel: "Pricing" },
+    });
     expect(parseBotBrowserAction('Click the "Pricing" button on https://codelit.io')).toMatchObject({
       kind: "action",
       request: { action: "click", targetLabel: "Pricing" },

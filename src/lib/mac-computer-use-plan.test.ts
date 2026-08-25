@@ -66,6 +66,7 @@ function result(items: string[]): ProviderTaskResult {
 describe("Codelit computer-use planner", () => {
   it("routes only requests that explicitly name an approved app", () => {
     expect(matchComputerApp("Use Safari to open a new tab", scopes)?.bundleId).toBe("com.apple.Safari");
+    expect(matchComputerApp("Inspect Safari and summarize what is visible", scopes)?.bundleId).toBe("com.apple.Safari");
     expect(matchComputerApp("Open a new tab", scopes)).toBeNull();
     expect(matchComputerApp("Email the report", [{ ...scopes[0], appName: "Mail" }])).toBeNull();
     expect(matchComputerApp("Tell me about Safari", scopes)).toBeNull();

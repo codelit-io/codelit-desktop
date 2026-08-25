@@ -3395,6 +3395,45 @@ select:focus-visible {
   font-size: 12px;
 }
 
+.bot-next-actions {
+  display: flex;
+  overflow-x: auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 12px 2px 2px;
+  border-top: 1px solid var(--bots-border);
+  scrollbar-width: none;
+}
+
+.bot-next-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.bot-next-actions > span {
+  flex: 0 0 auto;
+  color: var(--bots-text-faint);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.bot-next-actions button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--bots-text-soft);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bot-next-actions button:hover {
+  color: var(--bots-text);
+}
+
 .bots-composer-dock {
   position: absolute;
   z-index: 15;
@@ -4877,11 +4916,11 @@ select:focus-visible {
   }
 
   .bots-thread {
-    padding: 38px 18px 176px;
+    padding: 24px 18px 176px;
   }
 
   .bot-intro {
-    margin-bottom: 34px;
+    margin-bottom: 0;
   }
 
   .bot-intro h1 {

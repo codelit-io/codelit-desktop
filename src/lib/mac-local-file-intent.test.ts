@@ -12,6 +12,9 @@ describe("Mac local file and conversation intents", () => {
     expect(localConversationReply("hi", "Release Bot")).toBe(
       "Hi! I'm Release Bot. What should we work on?",
     );
+    expect(localConversationReply("Hi, what can you help me with?", "Release Bot")).toBe(
+      "Hi! I'm Release Bot. What should we work on?",
+    );
   });
 
   it("does not intercept a greeting that includes real work", () => {

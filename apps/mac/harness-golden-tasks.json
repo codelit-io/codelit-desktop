@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    { "id": "conversation", "lane": "conversation", "request": "Hi, what can you help me with?" },
+    { "id": "project-overview", "lane": "project-read", "request": "What's this codebase about?" },
+    { "id": "browser-evidence", "lane": "browser-read", "request": "Inspect https://codelit.io and summarize only visible evidence." },
+    { "id": "browser-action", "lane": "browser-action", "request": "Click Pricing on https://codelit.io" },
+    { "id": "computer-inspect", "lane": "computer-read", "request": "Inspect Notes and summarize what is visible without changing anything." },
+    { "id": "team-handoff", "lane": "delegation", "request": "Ask the team to review this project and return one evidence-backed gap." },
+    { "id": "connected-tools", "lane": "grounded-harness", "request": "Which connected tools can I use?", "expectedTool": "list_connected_tools" },
+    { "id": "local-table", "lane": "data", "request": "Create a table called Leads with columns Name, Company, Status" },
+    { "id": "goal", "lane": "control", "request": "Set your goal to prepare a verifiable release" },
+    { "id": "routine", "lane": "control", "request": "Every weekday at 9 AM, inspect https://codelit.io and report material changes" },
+    { "id": "project-watch", "lane": "control", "request": "When this project changes, summarize only material differences" },
+    { "id": "memory", "lane": "control", "request": "Remember that releases require QA approval" },
+    { "id": "skill", "lane": "control", "request": "Teach a skill called Release Check that identifies the riskiest release gap" }
+  ]
+}

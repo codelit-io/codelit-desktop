@@ -311,11 +311,15 @@ export async function runAgenticReadLoop(input: {
   const mcpCalls = [...restored.mcpCalls];
   const maxActions = Math.max(0, Math.min(MAX_HARNESS_ACTIONS, Math.floor(input.maxToolCalls)));
   const remainingActions = Math.max(0, maxActions - restored.actionCount);
-  const maxModelTurns = Math.min(MAX_HARNESS_MODEL_TURNS - restored.modelTurns, Math.max(2, remainingActions + 3));
+  const remainingModelTurns = MAX_HARNESS_MODEL_TURNS - restored.modelTurns;
+  if (remainingModelTurns <= 0) throw new Error("The saved agent run exhausted its bounded model-turn budget.");
+  const maxModelTurns = Math.min(remainingModelTurns, Math.max(2, remainingActions + 3));
   let actionCount = restored.actionCount;
   let modelTurns = restored.modelTurns;
   let recoveryAttempts = restored.recoveryAttempts;
-  let forceAnswer = actionCount >= maxActions || (available.size === 0 && availableMcpTools.length === 0);
+  let forceAnswer = actionCount >= maxActions
+    || modelTurns >= MAX_HARNESS_MODEL_TURNS - 1
+    || (available.size === 0 && availableMcpTools.length === 0);
 
   const checkpoint = (): AgenticHarnessCheckpoint => ({
     schemaVersion: 1,
@@ -342,13 +346,16 @@ export async function runAgenticReadLoop(input: {
       const detail = reason instanceof Error ? reason.message : String(reason);
       observations.push(`Tool ${tool} stopped safely: ${detail.slice(0, 500)}`);
     }
-    forceAnswer = actionCount >= maxActions || (available.size === 0 && availableMcpTools.length === 0);
+    forceAnswer = actionCount >= maxActions
+      || modelTurns >= MAX_HARNESS_MODEL_TURNS - 1
+      || (available.size === 0 && availableMcpTools.length === 0);
   };
 
   const requiredTool = requiredGroundingTool(input.request, [...available.keys()]);
   if (requiredTool && actionCount < maxActions) await executeTool(requiredTool);
 
   for (let turn = 0; turn < maxModelTurns; turn += 1) {
+    if (modelTurns >= MAX_HARNESS_MODEL_TURNS - 1) forceAnswer = true;
     const result = await input.invoke(buildAgenticTurnPrompt({
       basePrompt: input.basePrompt,
       request: input.request,
@@ -403,6 +410,12 @@ export async function runAgenticReadLoop(input: {
       continue;
     }
     if (decision.kind === "mcp") {
+      if (forceAnswer || actionCount >= maxActions) {
+        observations.push(`External tool ${decision.proposal.tool.reference} is not available now. Answer from the results already supplied.`);
+        recoveryAttempts += 1;
+        forceAnswer = true;
+        continue;
+      }
       return {
         result: aggregateResult(results, result),
         completedTools,

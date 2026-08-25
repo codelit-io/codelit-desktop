@@ -8,7 +8,7 @@ function normalizedRequest(value: string) {
 
 export function localConversationReply(value: string, botName: string) {
   const request = normalizedRequest(value).replace(/[!.?]+$/g, "").trim();
-  if (/^(?:hi|hello|hey|good morning|good afternoon|good evening)$/.test(request)) {
+  if (/^(?:hi|hello|hey|good morning|good afternoon|good evening)(?:,?\s+(?:what can you (?:do|help me with)|how can you help|who are you))?$/.test(request)) {
     return `Hi! I'm ${botName}. What should we work on?`;
   }
   if (/^(?:thanks|thank you|thank you very much)$/.test(request)) {

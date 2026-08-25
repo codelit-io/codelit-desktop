@@ -17,7 +17,7 @@ export function matchComputerApp(
   scopes: ComputerAppScope[],
 ): ComputerAppScope | null {
   const normalized = request.toLocaleLowerCase();
-  if (!/\b(use|click|press|open|type|enter|fill|select|choose|toggle|send|draft|create|close|check)\b/.test(normalized)) {
+  if (!/\b(use|click|press|open|type|enter|fill|select|choose|toggle|send|draft|create|close|check|inspect|review|summarize)\b/.test(normalized)) {
     return null;
   }
   return [...scopes]

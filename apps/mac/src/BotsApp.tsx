@@ -16,7 +16,6 @@ import {
   FolderSync,
   Globe2,
   Menu,
-  MessageSquareText,
   Monitor,
   ImagePlus,
   PanelLeftClose,
@@ -137,7 +136,6 @@ import {
 } from "./bot-initiative";
 import {
   BOT_CAPABILITY_MANIFESTS,
-  BOTS_P1_BETA_POLICY,
   botBrowserAutoApprovalSource,
   botProvidersForChannel,
   isBotBrowserSessionOpen,
@@ -302,6 +300,7 @@ const BotBrowserTeachingActivity = lazy(() => import("./components/BotBrowserTea
 const BotDataTableArtifact = lazy(() => import("./components/BotDataTableArtifact"));
 const BotDownloadArtifacts = lazy(() => import("./components/BotDownloadArtifacts"));
 const BotMemoryProposals = lazy(() => import("./components/BotMemoryProposals"));
+const BotOutcomeActions = lazy(() => import("./components/BotOutcomeActions"));
 const BotSkillReviews = lazy(() => import("./components/BotSkillReviews"));
 const BotMarkdown = lazy(() => import("./components/BotMarkdown"));
 const LocalBrowserPanel = lazy(() => import("./components/LocalBrowserPanel"));
@@ -865,6 +864,7 @@ export default function BotsApp() {
   const [exportingTableId, setExportingTableId] = useState<string | null>(null);
   const [browserDownloads, setBrowserDownloads] = useState<QuarantinedBrowserDownload[]>([]);
   const [downloadActionId, setDownloadActionId] = useState<string | null>(null);
+  const [mcpServers, setMcpServers] = useState<LocalMcpServer[]>([]);
   const [delegations, setDelegations] = useState<LocalBotDelegation[]>([]);
   const [computerUseReadiness, setComputerUseReadiness] = useState<ComputerUseReadiness | null>(null);
   const [runningComputerApps, setRunningComputerApps] = useState<RunningComputerApp[]>([]);
@@ -1121,10 +1121,11 @@ export default function BotsApp() {
   }, []);
 
   const refreshStartupMetadata = useCallback(async () => {
-    const [providersResult, credentialsResult, updateResult] = await Promise.allSettled([
+    const [providersResult, credentialsResult, updateResult, mcpResult] = await Promise.allSettled([
       probeLocalProviders(),
       probeProviderApiKeys(),
       probeDesktopUpdate(),
+      listLocalMcpServers(),
     ]);
     if (providersResult.status === "fulfilled") setProviders(providersResult.value);
     if (credentialsResult.status === "fulfilled") setApiCredentials(credentialsResult.value);
@@ -1132,7 +1133,8 @@ export default function BotsApp() {
       setBuildChannel(updateResult.value.channel);
       setBuildChannelReady(true);
     }
-    if ([providersResult, credentialsResult, updateResult].some((result) => result.status === "rejected")) {
+    if (mcpResult.status === "fulfilled") setMcpServers(mcpResult.value);
+    if ([providersResult, credentialsResult, updateResult, mcpResult].some((result) => result.status === "rejected")) {
       setGlobalNotice("Your bots are ready. Some intelligence settings need a refresh.");
     }
   }, []);
@@ -1624,6 +1626,19 @@ export default function BotsApp() {
   const hasProject = Boolean(workspace?.workspaceFolder?.accessValidated);
   const browserReadAvailable = buildChannelReady
     && BOT_CAPABILITY_MANIFESTS[buildChannel].managedBrowserRead;
+  const connectedToolCount = useMemo(() => mcpServers.reduce((total, server) => (
+    total + (server.enabled ? server.tools.filter((tool) => tool.approved).length : 0)
+  ), 0), [mcpServers]);
+  const outcomeCapabilities = useMemo(() => ({
+    ...(computerUseAvailable && computerAppScopes[0]?.appName
+      ? { approvedComputerAppName: computerAppScopes[0].appName }
+      : {}),
+    browserReadAvailable,
+    connectedToolCount,
+    hasProject,
+    schedulesAvailable,
+    teammateCount: activeGroupMembers.length,
+  }), [activeGroupMembers.length, browserReadAvailable, computerAppScopes, computerUseAvailable, connectedToolCount, hasProject, schedulesAvailable]);
   const safeAutoApprove = bot?.spec.permissionPolicy.approvalMode === "safe-auto";
   const browserDomains = bot?.spec.permissionPolicy.browserDomains || [];
   const pendingSafeReadEligible = Boolean(
@@ -7254,14 +7269,21 @@ export default function BotsApp() {
               </div>
             </header>}
 
-            <BotGoalCard
-              goal={bot.spec.goal}
-              disabled={hasAnyActiveRun}
-              onComplete={() => void completeActiveGoal()}
-            />
+            {hasConversation && (
+              <BotGoalCard
+                goal={bot.spec.goal}
+                disabled={hasAnyActiveRun}
+                onComplete={() => void completeActiveGoal()}
+              />
+            )}
 
             <div className="bots-blocks">
-              {threadTimeline.map((item) => item.kind === "block" ? (
+              {threadTimeline.filter((item) => !(
+                !hasConversation
+                && item.kind === "block"
+                && item.block.type === "assistant-message"
+                && item.block.sequence === 1
+              )).map((item) => item.kind === "block" ? (
                 <BotThreadBlock key={item.id} block={item.block} bot={bot} />
               ) : (
                 <BotDelegationCard
@@ -7525,14 +7547,26 @@ export default function BotsApp() {
               )}
             </div>
 
-            {workspace.blocks.length <= 1 && (
-              <div className="bot-starters" aria-label="Starter tasks">
-                {BOTS_P1_BETA_POLICY.starterTasks.map((task) => (
-                  <button key={task} onClick={() => void submit(task)} disabled={!canStartBotExecution(executionStates, bot.id) || !engine}>
-                    <MessageSquareText size={15} /> <span>{task}</span>
-                  </button>
-                ))}
-              </div>
+            {workspace.blocks.length <= 1 && !prompt.trim() && (
+              <Suspense fallback={null}>
+                <BotOutcomeActions
+                  capabilities={outcomeCapabilities}
+                  disabled={!canStartBotExecution(executionStates, bot.id)}
+                  mode="starter"
+                  onSubmit={(task) => void submit(task)}
+                />
+              </Suspense>
+            )}
+            {workspace.blocks.length > 1 && runState === "idle" && !prompt.trim() && (
+              <Suspense fallback={null}>
+                <BotOutcomeActions
+                  blocks={workspace.blocks}
+                  capabilities={outcomeCapabilities}
+                  disabled={!canStartBotExecution(executionStates, bot.id)}
+                  mode="next"
+                  onSubmit={(task) => void submit(task)}
+                />
+              </Suspense>
             )}
             </>}
           </section>
