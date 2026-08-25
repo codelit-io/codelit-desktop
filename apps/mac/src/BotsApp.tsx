@@ -410,6 +410,12 @@ const UNEXPECTED_ACTION_OPTIONS: Array<{ value: UnexpectedActionCategory; label:
   { value: "other", label: "Another unexpected action" },
 ];
 
+const BOT_JOB_STARTERS = [
+  "Keep a project release-ready.",
+  "Check a website every morning.",
+  "Turn notes into a daily brief.",
+] as const;
+
 interface BotTaskOutcome {
   status: "completed" | "failed" | "paused" | "approval-required";
   detail: string;
@@ -7244,7 +7250,7 @@ export default function BotsApp() {
             ) : <>
             {!hasConversation && <header className="bot-intro">
               <BotAvatar avatar={activeAvatar} size="hero" />
-              <h1>{bot.name}</h1>
+              <h1>What should {bot.name} handle?</h1>
               <p>{bot.spec.job}</p>
               <div className="bot-scope-row">
                 {hasProject ? (
@@ -7749,11 +7755,26 @@ export default function BotsApp() {
                 aria-label="Bot job"
               />
             </label>
+            {!botJob.trim() && (
+              <div className="bot-create-starters" aria-label="Bot ideas">
+                {BOT_JOB_STARTERS.map((starter) => (
+                  <button key={starter} type="button" onClick={() => setBotJob(starter)}>
+                    <Sparkles size={14} aria-hidden="true" />
+                    <span>{starter}</span>
+                    <Plus size={14} aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            )}
             {botJob.trim() && (
               <div className="bot-create-preview">
-                <strong>{normalizeBotName(newBotName) || createBotName(botJob)}</strong>
-                <span>Can do: answer, reason, and use approved tools</span>
-                <span>Asks first: project access and any external change</span>
+                <BotAvatar avatar={newBotAvatar} size="medium" />
+                <div>
+                  <small>Bot preview</small>
+                  <strong>{normalizeBotName(newBotName) || createBotName(botJob)}</strong>
+                  <span>{botJob.trim()}</span>
+                </div>
+                <span className="bot-create-boundary"><ShieldCheck size={13} /> Asks before access or changes</span>
               </div>
             )}
             <details className="bot-create-customize">

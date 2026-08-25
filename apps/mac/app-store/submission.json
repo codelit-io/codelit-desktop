@@ -4,7 +4,7 @@
     "name": "Codelit",
     "subtitle": "Private AI bots for Mac",
     "bundleId": "io.codelit.desktop",
-    "build": "14",
+    "build": "15",
     "sku": "codelit-mac",
     "platform": "macOS",
     "minimumSystemVersion": "14.0",
@@ -18,7 +18,7 @@
     "promotionalText": "Create persistent AI bots that remember approved context, collaborate on work, and run with private on-device intelligence on your Mac.",
     "description": "Codelit gives you a small team of persistent AI bots that lives on your Mac. Create a bot in plain language, talk through the work, and keep each conversation, run, memory, and skill together in one focused workspace.\n\nStart without an account. Codelit can use its built-in on-device model on supported Macs, so local prompts and model output stay on the device. You can also select a user-owned API provider when you explicitly choose it. Codelit never silently changes billing families.\n\nEach bot has a clear job, approved memory, reusable skills, a local data table, and an inspectable history. Add specialist bots to a conversation when a task benefits from another perspective. Runs show a clear status while private safety records preserve approvals and failures without cluttering the conversation.\n\nThe Mac App Store version supports local conversations, bots, memories, skills, multi-bot handoffs, selected-folder reads, and private local run history. It does not request Accessibility or Screen Recording access, and it does not include background routines, automated website inspection, or computer control.",
     "keywords": "ai bots,local ai,ai assistant,on-device ai,automation,developer tools,memory,agents",
-    "releaseNotes": "First Mac release of Codelit Bots with local conversations, on-device inference, approved memory, reusable skills, multi-bot collaboration, and inspectable run receipts.",
+    "releaseNotes": "A calmer, more readable bot workspace with clearer task-first bot creation, improved starter actions, and refined light, dark, and compact layouts.",
     "copyright": "2026 Codelit.io"
   },
   "urls": {

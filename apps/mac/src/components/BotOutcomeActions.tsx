@@ -1,4 +1,4 @@
-import { MessageSquareText, Sparkles } from "lucide-react";
+import { ArrowRight, MessageSquareText, Sparkles } from "lucide-react";
 import type { ThreadBlock } from "@/lib/workspace-thread";
 import {
   buildBotNextActions,
@@ -35,7 +35,9 @@ export default function BotOutcomeActions({
       <div className="bot-starters" aria-label="Starter tasks">
         {actions.map((action) => (
           <button key={action.id} onClick={() => onSubmit(action.prompt)} disabled={disabled} title={action.prompt}>
-            <MessageSquareText size={15} /> <span>{action.label}</span>
+            <MessageSquareText size={15} />
+            <span>{action.label}</span>
+            <ArrowRight className="bot-starter-arrow" size={14} aria-hidden="true" />
           </button>
         ))}
       </div>

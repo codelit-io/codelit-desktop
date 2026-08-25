@@ -417,7 +417,7 @@ function installParallelBotTauriFixture(fixtureInput) {
     participantId: "participant-renderer-qa",
     generatedAt: timestamp(),
     app: {
-      version: "0.1.1",
+      version: "0.1.2",
       buildChannel: "direct",
       sourceCommit: "a".repeat(40),
       sourceDirty: false,
@@ -2006,6 +2006,12 @@ async function auditPanels(page, matrix, records, failures, consoleIssues, scree
   await page.getByRole("button", { name: "New bot", exact: true }).click();
   const newBot = page.getByRole("dialog", { name: "Create a bot" });
   await newBot.waitFor({ state: "visible" });
+  const starterIdea = newBot.getByRole("button", { name: "Keep a project release-ready.", exact: true });
+  await starterIdea.waitFor({ state: "visible" });
+  await starterIdea.click();
+  if (await page.getByLabel("Bot job").inputValue() !== "Keep a project release-ready.") {
+    throw new Error("The outcome-first bot idea did not populate the bot job.");
+  }
   await page.getByLabel("Bot job").fill("Review release health every morning.");
   await newBot.getByText("Review Release Health Bot", { exact: true }).waitFor({ state: "visible" });
   const newBotAudit = await auditCurrentSurface(page, matrix, "New bot", consoleIssues);

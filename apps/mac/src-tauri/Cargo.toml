@@ -1,6 +1,6 @@
 [package]
 name = "codelit-mac"
-version = "0.1.1"
+version = "0.1.2"
 description = "Local-first Codelit for macOS"
 authors = ["Codelit"]
 edition = "2024"
