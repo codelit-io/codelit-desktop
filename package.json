@@ -47,8 +47,8 @@
     "desktop:app-store:upload": "node apps/mac/scripts/submit-app-store-build.mjs --upload"
   },
   "devDependencies": {
-    "@playwright/test": "1.60.0",
-    "axe-core": "4.11.1",
-    "vitest": "3.2.7"
+    "@playwright/test": "1.62.1",
+    "axe-core": "4.13.0",
+    "vitest": "4.1.11"
   }
 }
