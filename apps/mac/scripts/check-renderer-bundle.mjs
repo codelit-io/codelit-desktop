@@ -7,9 +7,9 @@ export const desktopRendererBundleBudget = {
   entryBytes: 500_000,
   initialGzipBytes: 150_000,
   largestDeferredGzipBytes: 55_000,
-  // Include accessible provider navigation and visible export feedback; startup
-  // and per-chunk limits remain fixed. This adds less than 0.5% to the total.
-  totalGzipBytes: 219_000,
+  // Bound the added deferred conversation Find and clipboard actions while
+  // keeping startup and per-chunk limits fixed.
+  totalGzipBytes: 223_000,
 };
 
 const requiredDeferredChunks = [

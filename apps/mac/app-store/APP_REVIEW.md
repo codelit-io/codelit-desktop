@@ -18,7 +18,8 @@
 7. Open All activity to inspect completed work and multi-bot handoffs. The App Store build clearly identifies background routines as unavailable.
 8. Open Settings > Privacy and confirm automated website inspection and computer control remain unavailable in this profile.
 9. In Settings > Privacy, choose `Export all local data`, select a destination, and save the `.codelit` workspace archive. Repeat to replace that backup, then cancel another save dialog to confirm the workspace remains usable. Exports omit sign-ins and folder permissions.
-10. Use `Delete local workspace` only when finished reviewing; type `DELETE` to remove app-owned local data while leaving selected project files unchanged.
+10. Use Command-F to find text in a conversation; navigate matches with Enter and Shift-Enter, then close with Escape. Completed answers and code blocks have explicit Copy controls.
+11. Use `Delete local workspace` only when finished reviewing; type `DELETE` to remove app-owned local data while leaving selected project files unchanged.
 
 ## Changes addressing the September 2 review
 

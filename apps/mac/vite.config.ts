@@ -13,6 +13,16 @@ export default defineConfig(async () => ({
       "@": fileURLToPath(new URL("./shared", import.meta.url)),
     },
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          // Keep shared React/JSX helpers stable as optional surfaces add hooks.
+          groups: [{ name: "react-runtime", test: /node_modules[\\/]react[\\/]/ }],
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

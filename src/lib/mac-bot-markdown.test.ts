@@ -1,8 +1,9 @@
 import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import BotMarkdown, {
   type BotMarkdownProps,
+  copyBotText,
   safeBotMarkdownUrl,
 } from "../../apps/mac/src/components/BotMarkdown";
 
@@ -15,6 +16,29 @@ function render(markdown: string, streaming = false) {
 }
 
 describe("Mac bot Markdown", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("offers copying only completed answers and code without exposing renderer props", () => {
+    const html = render("```ts\nconst ready = true;\n```");
+    expect(html).toContain('aria-label="Copy answer"');
+    expect(html).toContain('aria-label="Copy code"');
+    expect(html).not.toContain('node="');
+    expect(render("Partial answer", true)).not.toContain('aria-label="Copy');
+    expect(render(" ")).not.toContain('aria-label="Copy');
+  });
+
+  it("writes only the requested text and propagates clipboard failures", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const text = "# Answer\n\n    const price = '$5';\n";
+    await copyBotText(text);
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(text);
+    writeText.mockRejectedValueOnce(new Error("denied"));
+    await expect(copyBotText(text)).rejects.toThrow("denied");
+    vi.stubGlobal("navigator", {});
+    await expect(copyBotText(text)).rejects.toThrow("Clipboard unavailable");
+  });
+
   it("renders the bounded response formats used by technical answers", () => {
     const html = render([
       "# Migration plan",

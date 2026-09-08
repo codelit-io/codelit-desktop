@@ -292,6 +292,7 @@ import {
   takeOverComputerRun,
 } from "./runtime";
 import { errorMessage } from "./error-message";
+import { listenForConversationFind } from "./components/conversation-find-shortcut";
 import "./BotsApp.css";
 
 const BotBrowserSkillRunActivity = lazy(() => import("./components/BotBrowserSkillRunActivity"));
@@ -302,6 +303,7 @@ const BotMemoryProposals = lazy(() => import("./components/BotMemoryProposals"))
 const BotOutcomeActions = lazy(() => import("./components/BotOutcomeActions"));
 const BotSkillReviews = lazy(() => import("./components/BotSkillReviews"));
 const BotMarkdown = lazy(() => import("./components/BotMarkdown"));
+const ConversationFind = lazy(() => import("./components/ConversationFind"));
 const LocalBrowserPanel = lazy(() => import("./components/LocalBrowserPanel"));
 const ProviderCenter = lazy(() => import("./components/ProviderCenter"));
 
@@ -880,6 +882,7 @@ export default function BotsApp() {
   const [computerUseBusy, setComputerUseBusy] = useState(false);
   const [computerEvidenceByBotId, setComputerEvidenceByBotId] = useState<Record<string, ComputerActionResult | undefined>>({});
   const [activityOpen, setActivityOpen] = useState(false);
+  const [findRequest, setFindRequest] = useState(0);
   const [cancelingDelegationId, setCancelingDelegationId] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionDismissed, setMentionDismissed] = useState(false);
@@ -925,6 +928,7 @@ export default function BotsApp() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingGroup, setSavingGroup] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const findOpenRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const deleteWorkspacePanelRef = useRef<HTMLDivElement>(null);
   const deleteWorkspaceInputRef = useRef<HTMLInputElement>(null);
@@ -962,6 +966,7 @@ export default function BotsApp() {
     target: LocalBotDelegation["targets"][number],
   ) => Promise<void>) | null>(null);
   const closeNewBot = useCallback(() => setNewBotOpen(false), []);
+  const closeFind = useCallback(() => setFindRequest(0), []);
   const closeProfile = useCallback(() => setProfileOpen(false), []);
   const closeGroup = useCallback(() => setGroupOpen(false), []);
   const resetDeleteWorkspace = useCallback(() => {
@@ -1015,6 +1020,8 @@ export default function BotsApp() {
   const hasAnyActiveRun = Boolean(browserTeaching || browserSkillRun) || Object.values(executionStates)
     .some((candidate) => candidate.runState !== "idle");
   const overlayOpen = newBotOpen || settingsOpen || profileOpen || groupOpen;
+  const findOpen = findRequest > 0 && !activityOpen && !overlayOpen;
+  findOpenRef.current = findOpen;
   const hasConversation = Boolean(workspace?.blocks.some((block) => block.type === "user-message"));
   const activeRoutines = bot ? routinesForBot(schedules, bot.id) : [];
   const activeEventRoutines = bot ? eventRoutines.filter((routine) => routine.botId === bot.id) : [];
@@ -1609,12 +1616,18 @@ export default function BotsApp() {
   }, []);
 
   useEffect(() => {
-    if (!hasConversation && runState === "idle") return;
+    if (findOpenRef.current || (!hasConversation && runState === "idle")) return;
     const frame = window.requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      if (!findOpenRef.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeEvent, activityOpen, browserDownloads.length, browserSkillRun?.runId, catalog?.workspace.blocks.length, delegations.length, hasConversation, memoryProposals.length, pendingBrowserRun?.runId, pendingComputerRun?.runId, pendingMcpRun?.runId, pendingSkillReviews.length, runState]);
+
+  useEffect(() => {
+    closeFind();
+    if (!activeBotId || activityOpen || overlayOpen) return;
+    return listenForConversationFind(window, () => setFindRequest((request) => request + 1));
+  }, [activeBotId, activityOpen, closeFind, overlayOpen]);
 
   useEffect(() => {
     const onResize = () => setSidebarOpen(window.innerWidth >= 900);
@@ -7114,11 +7127,14 @@ export default function BotsApp() {
                 <CircleStop size={15} /> {runState === "canceling" ? "Stopping" : "Stop"}
               </button>
             )}
+            {!activityOpen && <button className="bots-icon-button" onClick={() => setFindRequest((request) => request + 1)} aria-label="Find in conversation" aria-expanded={findOpen} aria-keyshortcuts="Meta+F Control+F" title="Find in conversation (⌘F)"><Search size={17} /></button>}
             <button className="bots-icon-button" onClick={() => openSettings("general")} aria-label="Open settings" title="Settings">
               <SlidersHorizontal size={17} />
             </button>
           </div>
         </header>
+
+        {findOpen && <Suspense fallback={null}><ConversationFind conversationRef={scrollRef} focusRequest={findRequest} onClose={closeFind} /></Suspense>}
 
         {(browserActivities.length > 0 || browserTeaching || browserSkillRun) && (
           <section
