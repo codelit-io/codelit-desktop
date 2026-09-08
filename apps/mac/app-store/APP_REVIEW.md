@@ -28,7 +28,7 @@
 
 ## Data and commerce
 
-Bot conversations, prompts, memories, skills, routines, local tables, run events, receipts, model files, and folder permissions are encrypted and stored on the Mac. Built-in model runs do not send prompts or model output to Codelit or another model provider. If the reviewer explicitly configures and selects a user-owned API provider, that provider receives the bounded run context under its own account and terms.
+Bot conversations, prompts, memories, skills, routines, local tables, run events, receipts, and folder permissions are encrypted and stored on the Mac. Downloaded model weights are stored locally. Built-in model runs do not send prompts or model output to Codelit or another model provider. If the reviewer explicitly configures and selects a user-owned API provider, that provider receives the bounded run context under its own account and terms.
 
 The app is free, works without a Codelit account, contains no tracking SDK or advertising, and has no purchase or external-checkout path.
 
