@@ -42,10 +42,9 @@ export default function EnginePicker({
   const groups = providers
     .map((provider) => ({ provider, models: runnableModels(provider) }))
     .filter((group) => group.models.length > 0);
-  const fallback = firstRunnableSelection(providers);
   const selection = value && groups.some(({ provider, models }) => (
     provider.id === value.provider && models.some((model) => model.id === value.model)
-  )) ? value : fallback;
+  )) ? value : null;
 
   return (
     <label className={`engine-picker${compact ? " compact" : ""}`}>
@@ -54,13 +53,17 @@ export default function EnginePicker({
       <select
         aria-label={label}
         value={selection ? optionValue(selection.provider, selection.model) : ""}
-        disabled={!selection || disabled}
+        disabled={groups.length === 0 || disabled}
         onChange={(event) => {
           const [provider, model] = JSON.parse(event.target.value) as [ProviderProbe["id"], string];
           onChange({ provider, model });
         }}
       >
-        {!selection && <option value="">Choose intelligence in Settings</option>}
+        {!selection && (
+          <option value="" disabled>
+            {groups.length ? "Choose an engine" : "No engines ready. Open Intelligence settings"}
+          </option>
+        )}
         {groups.map(({ provider, models }) => (
           <optgroup key={provider.id} label={provider.label}>
             {models.map((model) => (

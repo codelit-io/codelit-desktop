@@ -1,3 +1,4 @@
+import { errorMessage } from "../error-message";
 import {
   ArrowLeft,
   ArrowRight,
@@ -142,7 +143,7 @@ export default function LocalBrowserPanel({
       const next = await setLocalBrowserVisibility(sessionId, true);
       commitSession(next);
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : String(reason));
+      setMessage(errorMessage(reason));
     }
   }, [collapsed, commitSession, native, obscured, sessionId]);
 
@@ -182,7 +183,7 @@ export default function LocalBrowserPanel({
       }).catch((reason) => {
         failed = true;
         if (!disposed) {
-          const detail = reason instanceof Error ? reason.message : String(reason);
+          const detail = errorMessage(reason);
           setMessage(detail);
           onOpenError?.(detail);
         }
@@ -227,7 +228,7 @@ export default function LocalBrowserPanel({
         void setLocalBrowserVisibility(sessionId, !obscured)
           .then(commitSession)
           .catch((reason) => {
-            const detail = reason instanceof Error ? reason.message : String(reason);
+            const detail = errorMessage(reason);
             setMessage(detail);
             onOpenError?.(detail);
           });
@@ -267,7 +268,7 @@ export default function LocalBrowserPanel({
       setPendingNavigation(null);
       commitSession(await navigateLocalBrowser(sessionId, preview.url));
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : String(reason));
+      setMessage(errorMessage(reason));
     } finally {
       setWorking(false);
     }
@@ -283,7 +284,7 @@ export default function LocalBrowserPanel({
       setPendingNavigation(null);
       setMessage(`${pendingNavigation.host} is allowed for this Project browser.`);
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : String(reason));
+      setMessage(errorMessage(reason));
     } finally {
       setWorking(false);
     }
@@ -295,7 +296,7 @@ export default function LocalBrowserPanel({
     try {
       commitSession(await localBrowserHistory(sessionId, direction));
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : String(reason));
+      setMessage(errorMessage(reason));
     } finally {
       setWorking(false);
     }
@@ -307,7 +308,7 @@ export default function LocalBrowserPanel({
       commitSession(await armLocalBrowserDownload(sessionId));
       setMessage("One download is approved. It will be quarantined locally and limited to 25 MB.");
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : String(reason));
+      setMessage(errorMessage(reason));
     }
   };
 

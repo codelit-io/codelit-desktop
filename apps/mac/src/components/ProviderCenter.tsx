@@ -1,3 +1,4 @@
+import { errorMessage } from "../error-message";
 import {
   CheckCircle2,
   Cpu,
@@ -10,7 +11,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import type {
   ApiKeyProviderId,
   LocalModelCandidate,
@@ -61,6 +62,12 @@ interface ManagedLocalSetup {
 }
 
 type ProviderCenterView = "local" | "subscription" | "api";
+
+const PROVIDER_VIEWS = [
+  { id: "local", label: "On this Mac", Icon: Cpu, description: "Private local models can work offline after setup." },
+  { id: "subscription", label: "Subscriptions", Icon: LogIn, description: "Use provider-owned sign-in and your existing allowance." },
+  { id: "api", label: "API keys", Icon: KeyRound, description: "Metered engines stay out of Auto unless you explicitly enable connected AI." },
+] as const;
 
 const API_PROVIDERS: readonly ApiProviderPresentation[] = [
   { id: "openai", label: "OpenAI API", keyPlaceholder: "Paste OpenAI API key" },
@@ -456,6 +463,7 @@ export default function ProviderCenter({
   setupState,
 }: ProviderCenterProps) {
   const [view, setView] = useState<ProviderCenterView>("local");
+  const presentation = PROVIDER_VIEWS.find((candidate) => candidate.id === view)!;
   const [discovery, setDiscovery] = useState<LocalModelDiscovery | null>(null);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
@@ -464,6 +472,20 @@ export default function ProviderCenter({
   const mlxProvider = localProviders.find((provider) => provider.id === "mlx");
   const externalLocalProviders = localProviders.filter((provider) => provider.id !== "mlx");
 
+  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")];
+    const index = tabs.indexOf(event.target as HTMLButtonElement);
+    if (index < 0) return;
+    const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+      : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+        : event.key === "Home" ? 0
+          : event.key === "End" ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    tabs[next].click();
+    tabs[next].focus();
+  };
+
   const discoverModels = async () => {
     if (discoveryBusy) return;
     setDiscoveryBusy(true);
@@ -471,7 +493,7 @@ export default function ProviderCenter({
     try {
       setDiscovery(await onDiscoverLocalModels());
     } catch (reason) {
-      setDiscoveryError(reason instanceof Error ? reason.message : String(reason));
+      setDiscoveryError(errorMessage(reason));
     } finally {
       setDiscoveryBusy(false);
     }
@@ -487,56 +509,39 @@ export default function ProviderCenter({
         <p>Choose one way to power your bots. You can change it anytime.</p>
       </header>
 
-      <div className="provider-center-tabs" role="tablist" aria-label="Provider type">
-        <button
-          id="provider-center-local-tab"
-          type="button"
-          role="tab"
-          aria-selected={view === "local"}
-          aria-controls="provider-center-local-panel"
-          className={view === "local" ? "selected" : undefined}
-          onClick={() => setView("local")}
-        >
-          <Cpu size={14} aria-hidden="true" /> On this Mac
-        </button>
-        <button
-          id="provider-center-subscription-tab"
-          type="button"
-          role="tab"
-          aria-selected={view === "subscription"}
-          aria-controls="provider-center-subscription-panel"
-          className={view === "subscription" ? "selected" : undefined}
-          onClick={() => setView("subscription")}
-        >
-          <LogIn size={14} aria-hidden="true" /> Subscriptions
-        </button>
-        <button
-          id="provider-center-api-tab"
-          type="button"
-          role="tab"
-          aria-selected={view === "api"}
-          aria-controls="provider-center-api-panel"
-          className={view === "api" ? "selected" : undefined}
-          onClick={() => setView("api")}
-        >
-          <KeyRound size={14} aria-hidden="true" /> API keys
-        </button>
+      <div className="provider-center-tabs" role="tablist" aria-label="Provider type" onKeyDown={onTabKeyDown}>
+        {PROVIDER_VIEWS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            id={`provider-center-${id}-tab`}
+            type="button"
+            role="tab"
+            aria-selected={view === id}
+            tabIndex={view === id ? 0 : -1}
+            aria-controls={`provider-center-${id}-panel`}
+            className={view === id ? "selected" : undefined}
+            onClick={() => setView(id)}
+          >
+            <Icon size={14} aria-hidden="true" /> {label}
+          </button>
+        ))}
       </div>
 
-      {view === "local" ? (
-        <section
-          id="provider-center-local-panel"
+      <section
+          id={`provider-center-${view}-panel`}
           className="provider-center-section"
           role="tabpanel"
-          aria-labelledby="provider-center-local-tab provider-center-local"
+          aria-labelledby={`provider-center-${view}-tab`}
         >
           <div className="provider-center-section-heading">
             <div>
-              <h4 id="provider-center-local">On this Mac</h4>
-              <p>Private local models can work offline after setup.</p>
+              <h4>{presentation.label}</h4>
+              <p>{presentation.description}</p>
             </div>
-            <ProviderBadge family="local" />
+            <ProviderBadge family={view} />
           </div>
+      {view === "local" ? (
+        <>
           {setupState ? (
             <div className="provider-center-setup-progress" role="status" aria-live="polite">
               <LoaderCircle className="provider-center-spinner" size={15} aria-hidden="true" />
@@ -610,23 +615,10 @@ export default function ProviderCenter({
               </div>
             ) : null}
           </div>
-        </section>
+        </>
       ) : null}
 
       {view === "subscription" ? (
-        <section
-          id="provider-center-subscription-panel"
-          className="provider-center-section"
-          role="tabpanel"
-          aria-labelledby="provider-center-subscription-tab provider-center-subscriptions"
-        >
-          <div className="provider-center-section-heading">
-            <div>
-              <h4 id="provider-center-subscriptions">Subscriptions</h4>
-              <p>Use provider-owned sign-in and your existing allowance.</p>
-            </div>
-            <ProviderBadge family="subscription" />
-          </div>
           <div className="provider-center-list">
             {subscriptions.length > 0 ? subscriptions.map((provider) => (
               <SubscriptionProviderRow
@@ -639,23 +631,9 @@ export default function ProviderCenter({
               <p className="provider-center-empty">No subscription provider is available in this build.</p>
             )}
           </div>
-        </section>
       ) : null}
 
       {view === "api" ? (
-        <section
-          id="provider-center-api-panel"
-          className="provider-center-section"
-          role="tabpanel"
-          aria-labelledby="provider-center-api-tab provider-center-api-keys"
-        >
-          <div className="provider-center-section-heading">
-            <div>
-              <h4 id="provider-center-api-keys">API keys</h4>
-              <p>Metered engines stay out of Auto unless you explicitly enable connected AI.</p>
-            </div>
-            <ProviderBadge family="api" />
-          </div>
           <div className="provider-center-list">
             {API_PROVIDERS.map((presentation) => (
               <ApiKeyProviderRow
@@ -671,8 +649,8 @@ export default function ProviderCenter({
               />
             ))}
           </div>
-        </section>
       ) : null}
+      </section>
     </div>
   );
 }

@@ -37,4 +37,13 @@ describe("Mac local file and conversation intents", () => {
     expect(selectedFolderMatchesPurpose("/Users/mo/Desktop", "desktop")).toBe(true);
     expect(selectedFolderMatchesPurpose("/Users/mo/project", "project")).toBe(true);
   });
+
+  it("recognizes the explicit connected-project file read without changing its path", () => {
+    expect(parseLocalFileIntent("Read acceptance.txt from the connected project and quote its two lines."))
+      .toEqual({ kind: "read-project-file", path: "acceptance.txt" });
+    expect(parseLocalFileIntent('Quote "Docs/Acceptance.TXT" in my selected repository.'))
+      .toEqual({ kind: "read-project-file", path: "Docs/Acceptance.TXT" });
+    expect(parseLocalFileIntent("Read https://acceptance.txt from the connected project"))
+      .toBeNull();
+  });
 });

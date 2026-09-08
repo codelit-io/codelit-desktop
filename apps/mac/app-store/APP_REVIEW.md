@@ -14,10 +14,16 @@
 3. Select the bot name to customize its identity. Review its current goal in the workspace, then use the conversation to approve a memory or teach a reusable skill.
 4. Add another bot as a conversation teammate, then remove it. No account or network service is required.
 5. Open Settings > Intelligence. The built-in model download is optional for reviewing the workspace. On supported hardware, download it and send a short prompt to verify an on-device run and local receipt.
-6. Choose a project folder. The macOS picker grants read-only access, and removing the project revokes that access.
+6. Choose a project folder. Codelit uses read-only bookmarks and tools for the selected project, and removing the project revokes that access.
 7. Open All activity to inspect completed work and multi-bot handoffs. The App Store build clearly identifies background routines as unavailable.
 8. Open Settings > Privacy and confirm automated website inspection and computer control remain unavailable in this profile.
-9. In Settings > Privacy, use `Delete local workspace` only when finished reviewing; type `DELETE` to remove app-owned local data while leaving selected project files unchanged.
+9. In Settings > Privacy, choose `Export all local data`, select a destination, and save the `.codelit` workspace archive. Repeat to replace that backup, then cancel another save dialog to confirm the workspace remains usable. Exports omit sign-ins and folder permissions.
+10. Use `Delete local workspace` only when finished reviewing; type `DELETE` to remove app-owned local data while leaving selected project files unchanged.
+
+## Changes addressing the September 2 review
+
+- Guideline 5.2.5: the subtitle is now `Private AI workspace`, with the Apple product term removed.
+- Guideline 2.1(a): build 17 adds the sandbox entitlement required by the native Save dialog. Dialog creation is fallible, so an unavailable file picker produces an error instead of terminating the app. Exports use a macOS-authorized temporary directory on the destination volume, then atomically place the completed file at the selected location. Preparing a replacement never truncates the existing backup. Selected project folders continue to use read-only bookmarks and read-only tools.
 
 ## Data and commerce
 

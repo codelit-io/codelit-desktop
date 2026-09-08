@@ -1,3 +1,4 @@
+import { errorMessage } from "../error-message";
 import {
   Check,
   CircleAlert,
@@ -165,7 +166,7 @@ export default function BotBrowserSkillRunActivity({
   }, [onFinish, runId]);
 
   const fail = useCallback(async (reason: unknown) => {
-    const detail = reason instanceof Error ? reason.message : String(reason);
+    const detail = errorMessage(reason);
     setError(detail);
     onError(detail);
     await finish("failed", detail);
@@ -261,7 +262,7 @@ export default function BotBrowserSkillRunActivity({
     } catch (reason) {
       starting.current = false;
       if (finished.current) return;
-      const detail = reason instanceof Error ? reason.message : String(reason);
+      const detail = errorMessage(reason);
       setError(detail);
       onError(detail);
       return;
@@ -289,7 +290,7 @@ export default function BotBrowserSkillRunActivity({
       try {
         await onApproval({ id: approval.id, stepIndex: activeIndex, status: "held", body: approval.body });
       } catch (reason) {
-        onError(reason instanceof Error ? reason.message : String(reason));
+        onError(errorMessage(reason));
       }
     }
     await finish("canceled", `${skill.name} stopped before ${currentStep ? stepLabel(currentStep, recipe) : "the next step"}.`);

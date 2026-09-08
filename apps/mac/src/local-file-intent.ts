@@ -1,6 +1,15 @@
 export type LocalFileIntent =
   | { kind: "list-folder"; purpose: "desktop" | "project" }
+  | { kind: "read-project-file"; path: string }
   | { kind: "describe-project" };
+
+export function projectFileReference(value: string) {
+  const match = value.match(/\b(?:read|quote)\s+(?:the\s+)?(?:file\s+)?(["'`]?)([a-z0-9_./-]+\.[a-z0-9]+)\1\s+(?:from|in|inside|within)\s+(?:(?:the|my)\s+)?(?:(?:connected|selected|approved|local)\s+)?(?:project|repository|repo|codebase)\b/i);
+  if (!match) return null;
+  const path = match[2];
+  const start = match.index! + match[0].indexOf(path);
+  return { path, start, end: start + path.length };
+}
 
 function normalizedRequest(value: string) {
   return value.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ").trim();
@@ -18,6 +27,8 @@ export function localConversationReply(value: string, botName: string) {
 }
 
 export function parseLocalFileIntent(value: string): LocalFileIntent | null {
+  const file = projectFileReference(value);
+  if (file) return { kind: "read-project-file", path: file.path };
   const request = normalizedRequest(value);
   if (!request) return null;
 

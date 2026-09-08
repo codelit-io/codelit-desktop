@@ -120,7 +120,7 @@ export async function executeAgenticNativeAction(input: NativeRuntimeInput): Pro
       createdAt: new Date().toISOString(),
     });
     return {
-      context: [`Added one row to ${table.name}. It now has ${tableView.totalRows} rows.`],
+      context: [`Added one row to ${table.name}. It now has ${tableView.totalRows} ${tableView.totalRows === 1 ? "row" : "rows"}.`],
       completedTools: [{ toolId: `${table.id}-row-${tableView.totalRows}`, toolName: `Update ${table.name}` }],
       tableView,
     };

@@ -37,7 +37,7 @@ export function appStoreEntitlementBody({ child = false, applicationIdentifier =
   }
   const capabilities = child
     ? "  <key>com.apple.security.inherit</key><true/>"
-    : `  <key>com.apple.security.files.user-selected.read-only</key><true/>
+    : `  <key>com.apple.security.files.user-selected.read-write</key><true/>
   <key>com.apple.security.network.client</key><true/>
   <key>com.apple.application-identifier</key><string>${applicationIdentifier}</string>
   <key>com.apple.developer.team-identifier</key><string>${teamIdentifier}</string>`;
@@ -48,6 +48,41 @@ export function appStoreEntitlementBody({ child = false, applicationIdentifier =
 ${capabilities}
 </dict></plist>
 `;
+}
+
+export function appStoreEntitlementIssues(entitlements) {
+  const issues = [];
+  for (const required of [
+    "com.apple.security.app-sandbox",
+    "com.apple.security.files.user-selected.read-write",
+    "com.apple.security.network.client",
+  ]) {
+    if (entitlements?.[required] !== true) {
+      issues.push(`The App Store bundle must enable ${required}.`);
+    }
+  }
+  for (const forbidden of [
+    "com.apple.security.files.user-selected.read-only",
+    "com.apple.security.get-task-allow",
+    "com.apple.security.cs.disable-library-validation",
+  ]) {
+    if (entitlements?.[forbidden] === true) {
+      issues.push(`The App Store bundle contains forbidden entitlement ${forbidden}.`);
+    }
+  }
+  if (Object.keys(entitlements || {}).some((key) => key.startsWith("com.apple.security.temporary-exception"))) {
+    issues.push("The App Store bundle contains a forbidden temporary-exception entitlement.");
+  }
+  return issues;
+}
+
+function parseSignedEntitlements(output) {
+  const plist = output.match(/<\?xml[\s\S]*<\/plist>/)?.[0];
+  if (!plist) throw new Error("The signed bundle did not return its XML entitlements.");
+  return JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", "--", "-"], {
+    input: plist,
+    encoding: "utf8",
+  }));
 }
 
 export function appStoreBundlePermissionIssues(root) {
@@ -488,20 +523,8 @@ export function auditBuiltBundle(channel, { production = false } = {}) {
   run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", bundlePath]);
   const entitlements = run("codesign", ["-d", "--entitlements", ":-", bundlePath], { capture: true });
   if (channel === "app-store") {
-    for (const required of [
-      "com.apple.security.app-sandbox",
-      "com.apple.security.files.user-selected.read-only",
-      "com.apple.security.network.client",
-    ]) {
-      if (!entitlements.includes(required)) throw new Error(`The App Store bundle is missing ${required}.`);
-    }
-    for (const forbidden of [
-      "com.apple.security.get-task-allow",
-      "com.apple.security.cs.disable-library-validation",
-      "com.apple.security.temporary-exception",
-    ]) {
-      if (entitlements.includes(forbidden)) throw new Error(`The App Store bundle contains forbidden entitlement ${forbidden}.`);
-    }
+    const entitlementIssues = appStoreEntitlementIssues(parseSignedEntitlements(entitlements));
+    if (entitlementIssues.length) throw new Error(entitlementIssues.join(" "));
     const childEntitlements = run("codesign", ["-d", "--entitlements", ":-", mlx], { capture: true });
     for (const required of ["com.apple.security.app-sandbox", "com.apple.security.inherit"]) {
       if (!childEntitlements.includes(required)) throw new Error(`The App Store MLX helper is missing ${required}.`);

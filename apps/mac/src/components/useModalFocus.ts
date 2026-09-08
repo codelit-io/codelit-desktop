@@ -1,53 +1,66 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 
-const FOCUSABLE = [
-  "button:not([disabled])",
-  "[href]",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
+const FOCUSABLE = "button,[href],input,select,textarea,summary,[tabindex]";
+
+function focusableElements(dialog: HTMLElement | null) {
+  return [...(dialog?.querySelectorAll<HTMLElement>(FOCUSABLE) || [])].filter((element) => {
+    if (element.tabIndex < 0 || element.matches(":disabled") || element.closest("[inert], [hidden]")) return false;
+    let ancestor = element.parentElement;
+    while (ancestor) {
+      if (ancestor.matches("details:not([open])") && !ancestor.querySelector(":scope > summary")?.contains(element)) return false;
+      ancestor = ancestor.parentElement;
+    }
+    const { visibility } = window.getComputedStyle(element);
+    return visibility !== "hidden" && visibility !== "collapse" && element.getClientRects().length > 0;
+  });
+}
+
+function focusDialog(dialog: HTMLElement | null) {
+  if (!dialog) return;
+  if (!dialog.hasAttribute("tabindex")) dialog.tabIndex = -1;
+  dialog.focus();
+}
 
 export function useModalFocus(open: boolean, onClose: () => void) {
   const dialogRef = useRef<HTMLElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
-
   useEffect(() => {
     if (!open) return;
-    restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frame = window.requestAnimationFrame(() => {
-      const initial = dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")
-        || dialogRef.current?.querySelector<HTMLElement>("input, textarea, button");
-      initial?.focus();
+      const elements = focusableElements(dialogRef.current);
+      const initial = elements.find((element) => element.hasAttribute("data-autofocus")) || elements[0];
+      if (initial) initial.focus();
+      else focusDialog(dialogRef.current);
       if (initial instanceof HTMLInputElement || initial instanceof HTMLTextAreaElement) initial.select();
     });
     return () => {
       window.cancelAnimationFrame(frame);
-      restoreRef.current?.focus();
-      restoreRef.current = null;
+      if (opener?.isConnected) opener.focus();
     };
   }, [open]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented) return;
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       onClose();
       return;
     }
     if (event.key !== "Tab") return;
-    const elements = [...(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) || [])]
-      .filter((element) => element.offsetParent !== null);
+    const elements = focusableElements(dialogRef.current);
     if (!elements.length) {
       event.preventDefault();
+      focusDialog(dialogRef.current);
       return;
     }
     const first = elements[0];
     const last = elements[elements.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
+    const activeIsFocusable = elements.includes(document.activeElement as HTMLElement);
+    if (event.shiftKey && (document.activeElement === first || !activeIsFocusable)) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
+    } else if (!event.shiftKey && (document.activeElement === last || !activeIsFocusable)) {
       event.preventDefault();
       first.focus();
     }

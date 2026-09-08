@@ -1,3 +1,4 @@
+import { errorMessage } from "../error-message";
 import { Check, CircleAlert, FlaskConical, MousePointerClick, Sparkles, TextCursorInput, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -56,7 +57,7 @@ export default function BotBrowserTeachingActivity({
   const captureBusy = useRef(false);
 
   const fail = useCallback((reason: unknown) => {
-    const detail = reason instanceof Error ? reason.message : String(reason);
+    const detail = errorMessage(reason);
     setError(detail);
     onError(detail);
   }, [onError]);

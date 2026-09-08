@@ -258,6 +258,7 @@ import {
   reviewLocalBotMemoryProposal,
   reviewImportedBotSkill,
   readLocalProjectContext,
+  readLocalProjectFile,
   runIntelligenceTask,
   runApprovedLocalBrowserAction,
   runApprovedLocalMcpCall,
@@ -290,6 +291,7 @@ import {
   takeOpenedLocalNotification,
   takeOverComputerRun,
 } from "./runtime";
+import { errorMessage } from "./error-message";
 import "./BotsApp.css";
 
 const BotBrowserSkillRunActivity = lazy(() => import("./components/BotBrowserSkillRunActivity"));
@@ -773,6 +775,7 @@ function localFolderProviderResult(
   runId: string,
   text: string,
   durationMs: number,
+  scope = "Visible top-level names only",
 ): ProviderTaskResult {
   const selection = { provider: "codelit", model: "filesystem-v1" };
   return {
@@ -785,7 +788,7 @@ function localFolderProviderResult(
     commandPath: "local-filesystem-tool",
     evidence: [
       "Read-only access to the user-selected folder",
-      "Visible top-level names only",
+      scope,
       "No model or metered provider invoked",
     ],
     ...providerRunProvenance(selection, "fixed", false, false),
@@ -1138,21 +1141,23 @@ export default function BotsApp() {
       setBuildChannelReady(true);
     }
     if (mcpResult.status === "fulfilled") setMcpServers(mcpResult.value);
-    if ([providersResult, credentialsResult, updateResult, mcpResult].some((result) => result.status === "rejected")) {
+    const failure = [providersResult, credentialsResult, updateResult, mcpResult].find((result) => result.status === "rejected");
+    if (failure) {
       setGlobalNotice("Your bots are ready. Some intelligence settings need a refresh.");
     }
+    return failure;
   }, []);
 
   const retryOpenBots = useCallback(() => {
     void openBots().catch((reason) => {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     });
-  }, [openBots]);
+    void refreshStartupMetadata();
+  }, [openBots, refreshStartupMetadata]);
 
   useEffect(() => {
     retryOpenBots();
-    void refreshStartupMetadata();
-  }, [refreshStartupMetadata, retryOpenBots]);
+  }, [retryOpenBots]);
 
   const refreshRoutineState = useCallback(async () => {
     if (!schedulesAvailable) {
@@ -1184,7 +1189,7 @@ export default function BotsApp() {
 
   useEffect(() => {
     void refreshRoutineState().catch((reason) => {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     });
   }, [refreshRoutineState]);
 
@@ -1199,7 +1204,7 @@ export default function BotsApp() {
     const refresh = () => void getBotAutonomyPolicy(deviceTimezone()).then((policy) => {
       if (!disposed) setAutonomyPolicy(policy);
     }).catch((reason) => {
-      if (!disposed) setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      if (!disposed) setGlobalError(errorMessage(reason));
     });
     refresh();
     const timer = window.setInterval(refresh, 30_000);
@@ -1242,7 +1247,7 @@ export default function BotsApp() {
       setAutonomyPolicy(saved);
       setGlobalNotice(saved.globallyPaused ? "All routines paused" : "Autonomy settings saved");
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setSavingAutonomyPolicy(false);
     }
@@ -1265,7 +1270,7 @@ export default function BotsApp() {
         }
       } catch (reason) {
         delegationsRecovered.current = false;
-        setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        setGlobalError(errorMessage(reason));
       }
     };
     void recoverOnce();
@@ -1289,7 +1294,7 @@ export default function BotsApp() {
     }).catch((reason) => {
       if (intent === memoryLoadIntent.current) {
         setMemories([]);
-        setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        setGlobalError(errorMessage(reason));
       }
     });
   }, [activeBotId]);
@@ -1306,7 +1311,7 @@ export default function BotsApp() {
     }).catch((reason) => {
       if (intent === memoryProposalLoadIntent.current) {
         setMemoryProposals([]);
-        setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        setGlobalError(errorMessage(reason));
       }
     });
   }, [activeBotId]);
@@ -1329,14 +1334,14 @@ export default function BotsApp() {
       if (!botId) return;
       void refreshBrowserDownloads(botId).catch((reason) => {
         if (activeBotIdRef.current === botId) {
-          setGlobalError(reason instanceof Error ? reason.message : String(reason));
+          setGlobalError(errorMessage(reason));
         }
       });
     }).then((dispose) => {
       if (disposed) dispose();
       else unlisten = dispose;
     }).catch((reason) => {
-      if (!disposed) setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      if (!disposed) setGlobalError(errorMessage(reason));
     });
     return () => {
       disposed = true;
@@ -1357,7 +1362,7 @@ export default function BotsApp() {
     }).catch((reason) => {
       if (intent === downloadLoadIntent.current && activeBotIdRef.current === activeBotId) {
         setBrowserDownloads([]);
-        setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        setGlobalError(errorMessage(reason));
       }
     });
   }, [activeBotId]);
@@ -1382,7 +1387,7 @@ export default function BotsApp() {
       setGroupOwnerBotId(null);
       setGroupMembers([]);
       setGroupDraftIds([]);
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     });
   }, [activeBotId]);
 
@@ -1398,7 +1403,7 @@ export default function BotsApp() {
     }).catch((reason) => {
       if (intent === skillLoadIntent.current) {
         setSkills([]);
-        setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        setGlobalError(errorMessage(reason));
       }
     });
   }, [catalogReady]);
@@ -1415,7 +1420,7 @@ export default function BotsApp() {
     }).catch((reason) => {
       if (intent === tableLoadIntent.current) {
         setBotTables([]);
-        setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        setGlobalError(errorMessage(reason));
       }
     });
   }, [activeBotId]);
@@ -1432,7 +1437,7 @@ export default function BotsApp() {
         await consumeLocalNotification(route.id);
         window.focus();
       } catch (reason) {
-        setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        setGlobalError(errorMessage(reason));
       }
       return;
     }
@@ -1453,7 +1458,7 @@ export default function BotsApp() {
       await consumeLocalNotification(route.id);
       window.focus();
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     }
   }, []);
 
@@ -1488,18 +1493,16 @@ export default function BotsApp() {
     if (providerRefreshInFlight.current) return;
     providerRefreshInFlight.current = true;
     try {
-      const [nextProviders, nextCredentials] = await Promise.all([
-        probeLocalProviders(),
-        probeProviderApiKeys(),
-      ]);
-      setProviders(nextProviders);
-      setApiCredentials(nextCredentials);
+      const failure = await refreshStartupMetadata();
+      if (failure) {
+        setGlobalError(errorMessage(failure.reason));
+      }
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       providerRefreshInFlight.current = false;
     }
-  }, []);
+  }, [refreshStartupMetadata]);
 
   const refreshComputerUse = useCallback(async () => {
     if (!computerUseAvailable || !activeBotId) {
@@ -1526,7 +1529,7 @@ export default function BotsApp() {
 
   useEffect(() => {
     void refreshComputerUse().catch((reason) => {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     });
   }, [refreshComputerUse]);
 
@@ -1548,7 +1551,7 @@ export default function BotsApp() {
             else setGlobalNotice("Allow Screen Recording in macOS Settings, then return to Codelit.");
             await refreshComputerUse();
           } catch (reason) {
-            setGlobalError(reason instanceof Error ? reason.message : String(reason));
+            setGlobalError(errorMessage(reason));
           } finally {
             setComputerUseBusy(false);
           }
@@ -1716,12 +1719,15 @@ export default function BotsApp() {
   const promptConversationReply = bot && prompt.trim()
     ? localConversationReply(prompt, escapeBotMarkdown(bot.name))
     : null;
+  const promptLocalFileIntent = isNativeRuntime() ? parseLocalFileIntent(prompt) : null;
   const composerCanRun = Boolean(
     engine
     || promptDelegationIntent
     || promptDataIntent
     || promptControlIntent
     || promptConversationReply
+    || promptLocalFileIntent?.kind === "list-folder"
+    || promptLocalFileIntent?.kind === "read-project-file"
     || (browserReadAvailable && (promptTeachingIntent || promptBrowserSkillRun)),
   );
   const activeDelegationCount = delegations.filter((delegation) => (
@@ -1870,7 +1876,7 @@ export default function BotsApp() {
         ? "Safe read approvals enabled"
         : "Safe read approvals now ask first" });
     } catch (reason) {
-      setBotFeedback(botId, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(botId, { error: errorMessage(reason) });
     } finally {
       savingApprovalModeRef.current = false;
       setSavingApprovalMode(false);
@@ -1892,7 +1898,7 @@ export default function BotsApp() {
       replaceBot(updated);
       setBotFeedback(botId, { notice: `${domain} will ask before the next website read` });
     } catch (reason) {
-      setBotFeedback(botId, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(botId, { error: errorMessage(reason) });
     } finally {
       savingApprovalModeRef.current = false;
       setSavingApprovalMode(false);
@@ -1926,7 +1932,7 @@ export default function BotsApp() {
       }
       await refreshComputerUse();
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setComputerUseBusy(false);
     }
@@ -1946,7 +1952,7 @@ export default function BotsApp() {
       const app = runningComputerApps.find((candidate) => candidate.bundleId === computerAppChoice);
       setBotFeedback(bot.id, { notice: `${app?.name || "App"} is available to ${bot.name}. Each action will still ask.` });
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setComputerUseBusy(false);
     }
@@ -1961,7 +1967,7 @@ export default function BotsApp() {
       await refreshComputerUse();
       setBotFeedback(scope.botId, { notice: `${scope.appName} access removed` });
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setComputerUseBusy(false);
     }
@@ -1993,7 +1999,7 @@ export default function BotsApp() {
       setCatalog(next);
       if (window.innerWidth < 900) setSidebarOpen(false);
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     }
   };
 
@@ -2021,7 +2027,7 @@ export default function BotsApp() {
       setNewBotAvatar(defaultBotAvatar(`new-bot-${Date.now()}`));
       setNewBotOpen(false);
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       creatingRef.current = false;
       setCreating(false);
@@ -2064,7 +2070,7 @@ export default function BotsApp() {
         notice: next.length ? "Conversation team updated" : "Conversation team cleared",
       });
     } catch (reason) {
-      setGroupError(reason instanceof Error ? reason.message : String(reason));
+      setGroupError(errorMessage(reason));
     } finally {
       setSavingGroup(false);
     }
@@ -2093,7 +2099,7 @@ export default function BotsApp() {
     try {
       setProfileAvatar(await avatarFromFile(file));
     } catch (reason) {
-      setProfileError(reason instanceof Error ? reason.message : String(reason));
+      setProfileError(errorMessage(reason));
     }
   };
 
@@ -2111,7 +2117,7 @@ export default function BotsApp() {
       setProfileOpen(false);
       setBotFeedback(bot.id, { notice: "Bot profile updated" });
     } catch (reason) {
-      setProfileError(reason instanceof Error ? reason.message : String(reason));
+      setProfileError(errorMessage(reason));
     } finally {
       setSavingProfile(false);
     }
@@ -2129,7 +2135,7 @@ export default function BotsApp() {
         setGlobalNotice("Project connected read-only");
       }
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setChoosingFolder(false);
     }
@@ -2167,7 +2173,7 @@ export default function BotsApp() {
         openSettings("intelligence");
       }
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
       openSettings("intelligence");
     } finally {
       setModelSetup(null);
@@ -2179,7 +2185,7 @@ export default function BotsApp() {
     try {
       await cancelIntelligenceTask(modelSetup.runId);
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     }
   };
 
@@ -2203,7 +2209,7 @@ export default function BotsApp() {
           : `${bot.name} will choose the best ready non-metered engine`,
       });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
     } finally {
       setSavingEngine(false);
     }
@@ -2228,7 +2234,7 @@ export default function BotsApp() {
           : `Auto will not use metered APIs for ${bot.name}`,
       });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
     } finally {
       setSavingEngine(false);
     }
@@ -2254,7 +2260,7 @@ export default function BotsApp() {
         throw new Error("This subscription provider does not have an approved sign-in path yet.");
       }
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setOpeningProvider(null);
     }
@@ -2270,7 +2276,7 @@ export default function BotsApp() {
       const label = providers.find((candidate) => candidate.id === providerId)?.label || "provider";
       setGlobalNotice(`Follow the official ${label} setup guide, then return to Codelit`);
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setOpeningProvider(null);
     }
@@ -2298,7 +2304,7 @@ export default function BotsApp() {
       setGlobalNotice(`${providerLabel(nextProviders, { provider, model: "" })} key saved in Keychain`);
     } catch (reason) {
       setApiKeyDrafts((current) => ({ ...current, [provider]: "" }));
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setProviderCredentialBusy(null);
     }
@@ -2320,7 +2326,7 @@ export default function BotsApp() {
       setProviders(nextProviders);
       setGlobalNotice("API key removed from Keychain");
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setProviderCredentialBusy(null);
     }
@@ -2334,11 +2340,12 @@ export default function BotsApp() {
     try {
       const path = await exportLocalWorkspace();
       if (path) {
-        setSettingsOpen(false);
         setGlobalNotice(`Exported ${path.split("/").pop() || "Codelit backup"}`);
+      } else {
+        setGlobalNotice("Export canceled. No file was created.");
       }
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setExporting(false);
     }
@@ -2358,7 +2365,7 @@ export default function BotsApp() {
       await deleteLocalWorkspace(deleteWorkspaceConfirmation);
       window.location.reload();
     } catch (reason) {
-      setDeleteWorkspaceError(reason instanceof Error ? reason.message : String(reason));
+      setDeleteWorkspaceError(errorMessage(reason));
       setDeletingWorkspace(false);
     }
   };
@@ -2375,7 +2382,7 @@ export default function BotsApp() {
     try {
       setPilotReport(await getLocalPilotReport());
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setPilotAction(null);
     }
@@ -2389,7 +2396,7 @@ export default function BotsApp() {
       const path = await exportLocalPilotReport();
       if (path) setGlobalNotice(`Exported ${path.split("/").pop() || "private product report"}`);
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setPilotAction(null);
     }
@@ -2403,7 +2410,7 @@ export default function BotsApp() {
       setPilotReport(await recordLocalUnexpectedAction(unexpectedActionCategory));
       setGlobalNotice("Unexpected action recorded locally");
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
     } finally {
       setPilotAction(null);
     }
@@ -3430,7 +3437,7 @@ export default function BotsApp() {
       if (finished.result.status !== "completed") throw new Error(finished.result.text);
       await changeBotStatus(botId, "done", `Finished with ${pending.serverName}`);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
+      const message = errorMessage(reason);
       await discardPreparedLocalToolApproval(pending.runId).catch(() => undefined);
       if (!receiptRecorded) {
         const failedResult: ProviderTaskResult = {
@@ -3678,7 +3685,7 @@ export default function BotsApp() {
           : `Finished with ${providerLabel(providers, pending.engine)}`,
       );
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
+      const message = errorMessage(reason);
       const canceled = /cancel|stop/i.test(message);
       if (browserAction) {
         await discardPreparedLocalToolApproval(pending.runId).catch(() => undefined);
@@ -3747,7 +3754,7 @@ export default function BotsApp() {
             finishedAt: new Date().toISOString(),
           }));
         } catch (reason) {
-          setGlobalError(reason instanceof Error ? reason.message : String(reason));
+          setGlobalError(errorMessage(reason));
         }
       }
       const waiter = browserWaiters.current.get(pending.runId);
@@ -3782,7 +3789,7 @@ export default function BotsApp() {
       );
       replaceBot(updated);
     } catch (reason) {
-      setBotFeedback(botId, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(botId, { error: errorMessage(reason) });
       return;
     } finally {
       savingApprovalModeRef.current = false;
@@ -4013,7 +4020,7 @@ export default function BotsApp() {
         await changeBotStatus(botId, "blocked", actionResult.summary);
       }
     } catch (reason) {
-      const original = reason instanceof Error ? reason.message : String(reason);
+      const original = errorMessage(reason);
       const canceled = /cancel|stop/i.test(original);
       const message = actionDispatched && !canceled
         ? `${original} The app may have changed; inspect it before retrying.`
@@ -4086,7 +4093,7 @@ export default function BotsApp() {
         ));
       }
     } catch (reason) {
-      focusError = reason instanceof Error ? reason.message : String(reason);
+      focusError = errorMessage(reason);
     }
     if (awaitingApproval) await decideComputerRun(false);
     if (focusError) setBotFeedback(bot.id, { error: focusError, notice: null });
@@ -4224,7 +4231,7 @@ export default function BotsApp() {
       const path = await exportLocalBotTableCsv(bot.id, tableView.table.id);
       if (path) setBotFeedback(bot.id, { notice: `${tableView.table.name} exported as CSV`, error: null });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason), notice: null });
+      setBotFeedback(bot.id, { error: errorMessage(reason), notice: null });
     } finally {
       setExportingTableId(null);
     }
@@ -4235,7 +4242,7 @@ export default function BotsApp() {
     try {
       revealBotTable(await openLocalBotTable(bot.id, botTables[0].id));
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason), notice: null });
+      setBotFeedback(bot.id, { error: errorMessage(reason), notice: null });
     }
   };
 
@@ -4249,7 +4256,7 @@ export default function BotsApp() {
         setBotFeedback(bot.id, { notice: `${download.fileName} released`, error: null });
       }
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason), notice: null });
+      setBotFeedback(bot.id, { error: errorMessage(reason), notice: null });
     } finally {
       setDownloadActionId(null);
     }
@@ -4263,7 +4270,7 @@ export default function BotsApp() {
       await refreshBrowserDownloads(bot.id);
       setBotFeedback(bot.id, { notice: `${download.fileName} deleted`, error: null });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason), notice: null });
+      setBotFeedback(bot.id, { error: errorMessage(reason), notice: null });
     } finally {
       setDownloadActionId(null);
     }
@@ -4326,7 +4333,7 @@ export default function BotsApp() {
       setBotFeedback(restored.bot.id, { notice: restored.message.replace(/\*\*/g, ""), error: null });
     } catch (reason) {
       setBotFeedback(botChangeUndo.botId, {
-        error: reason instanceof Error ? reason.message : String(reason),
+        error: errorMessage(reason),
         notice: null,
       });
     }
@@ -4358,7 +4365,7 @@ export default function BotsApp() {
           runBot,
           runWorkspace,
           submitted,
-          reason instanceof Error ? reason.message : String(reason),
+          errorMessage(reason),
         );
       }
       return true;
@@ -4896,7 +4903,7 @@ export default function BotsApp() {
       });
     } catch (reason) {
       setBotFeedback(proposal.botId, {
-        error: reason instanceof Error ? reason.message : String(reason),
+        error: errorMessage(reason),
         notice: null,
       });
     } finally {
@@ -4925,7 +4932,7 @@ export default function BotsApp() {
       });
     } catch (reason) {
       setBotFeedback(bot.id, {
-        error: reason instanceof Error ? reason.message : String(reason),
+        error: errorMessage(reason),
         notice: null,
       });
     } finally {
@@ -4943,7 +4950,7 @@ export default function BotsApp() {
       setBotFeedback(undo.botId, { notice: "Memory removed", error: null });
     } catch (reason) {
       setBotFeedback(undo.botId, {
-        error: reason instanceof Error ? reason.message : String(reason),
+        error: errorMessage(reason),
         notice: null,
       });
     }
@@ -4980,7 +4987,7 @@ export default function BotsApp() {
       }
     } catch (reason) {
       setBotFeedback(undo.botId, {
-        error: reason instanceof Error ? reason.message : String(reason),
+        error: errorMessage(reason),
         notice: null,
       });
     }
@@ -5185,7 +5192,7 @@ export default function BotsApp() {
       });
     } catch (reason) {
       setBotFeedback(run.botId, {
-        error: reason instanceof Error ? reason.message : String(reason),
+        error: errorMessage(reason),
         notice: null,
       });
     }
@@ -5298,7 +5305,7 @@ export default function BotsApp() {
         finishedAt: new Date().toISOString(),
       }));
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
+      const message = errorMessage(reason);
       if (started) {
         try {
           replaceDelegation(await finishLocalBotDelegationTarget({
@@ -5354,7 +5361,7 @@ export default function BotsApp() {
         detail: `Asked ${delegation.targets.map((target) => target.botName).join(" and ")}.`,
       };
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
+      const message = errorMessage(reason);
       setBotFeedback(parentBot.id, { error: message, notice: null });
       return { status: "failed", detail: message };
     }
@@ -5452,7 +5459,7 @@ export default function BotsApp() {
         } catch (reason) {
           browserTeachingRelease.current?.();
           browserTeachingRelease.current = null;
-          const message = reason instanceof Error ? reason.message : String(reason);
+          const message = errorMessage(reason);
           setBotFeedback(botId, { error: message, notice: null });
           return { status: "failed", detail: message };
         }
@@ -5494,7 +5501,7 @@ export default function BotsApp() {
             .catch(() => undefined);
           return { status: "completed", detail: `Started ${browserSkillCandidate.skill.name}.`, runId };
         } catch (reason) {
-          const message = reason instanceof Error ? reason.message : String(reason);
+          const message = errorMessage(reason);
           setBotFeedback(botId, { error: message, notice: null });
           return { status: "failed", detail: message };
         }
@@ -5507,7 +5514,7 @@ export default function BotsApp() {
           await handleBotDataIntent(dataIntent, submitted, runBot, runWorkspace);
           return { status: "completed", detail: "Local table updated." };
         } catch (reason) {
-          const message = reason instanceof Error ? reason.message : String(reason);
+          const message = errorMessage(reason);
           setBotFeedback(botId, { error: message, notice: null });
           return { status: "failed", detail: message };
         }
@@ -5531,7 +5538,7 @@ export default function BotsApp() {
           await handleBotControlIntent(control, submitted, runBot, runWorkspace);
           return { status: "completed", detail: "Bot control updated." };
         } catch (reason) {
-          const message = reason instanceof Error ? reason.message : String(reason);
+          const message = errorMessage(reason);
           setBotFeedback(botId, { error: message });
           return { status: "failed", detail: message };
         }
@@ -5578,7 +5585,7 @@ export default function BotsApp() {
               ? "Desktop access connected read-only"
               : "Project connected read-only");
           } catch (reason) {
-            const message = reason instanceof Error ? reason.message : String(reason);
+            const message = errorMessage(reason);
             setBotFeedback(botId, { error: message, notice: null });
             return { status: "failed", detail: message };
           } finally {
@@ -5587,7 +5594,10 @@ export default function BotsApp() {
         }
       }
     }
-    const selectedEngine: IntelligenceSelection | null = localFileIntent?.kind === "list-folder"
+    const projectFile = localFileIntent?.kind === "read-project-file" ? localFileIntent.path : null;
+    const localReadOnly = localFileIntent?.kind === "list-folder"
+      || Boolean(projectFile && parseBotBrowserTarget(submitted).kind === "none");
+    const selectedEngine: IntelligenceSelection | null = localReadOnly
       ? { provider: "codelit", model: "filesystem-v1" }
       : options.engine || selectBotEngine(providers, buildChannel, runBot.spec.enginePolicy);
     if (!selectedEngine) {
@@ -5601,7 +5611,7 @@ export default function BotsApp() {
       runMemories = options.memories || await listLocalBotMemories(runBot.id);
       memorySnapshotHash = await botMemorySnapshotHash(runMemories);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
+      const message = errorMessage(reason);
       setBotFeedback(botId, { error: message });
       return { status: "paused", detail: message };
     }
@@ -5625,11 +5635,11 @@ export default function BotsApp() {
     let runSkills: BotSkill[];
     try {
       const availableSkills = options.skills || await listLocalBotSkills();
-      runSkills = localFileIntent?.kind === "list-folder"
+      runSkills = localReadOnly
         ? []
         : options.skills || skillsForBotRequest(availableSkills, submitted);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
+      const message = errorMessage(reason);
       setBotFeedback(botId, { error: message });
       return { status: "paused", detail: message };
     }
@@ -5676,7 +5686,7 @@ export default function BotsApp() {
       try {
         computerTarget = matchComputerApp(submitted, await listComputerAppScopes(runBot.id));
       } catch (reason) {
-        const message = reason instanceof Error ? reason.message : String(reason);
+        const message = errorMessage(reason);
         setBotFeedback(botId, { error: message });
         return { status: "paused", detail: message };
       }
@@ -5701,8 +5711,8 @@ export default function BotsApp() {
     try {
       updateExecutionStates((current) => startBotExecution(current, botId, runId, runEngine));
     } catch (reason) {
-      setBotFeedback(botId, { error: reason instanceof Error ? reason.message : String(reason) });
-      const message = reason instanceof Error ? reason.message : String(reason);
+      setBotFeedback(botId, { error: errorMessage(reason) });
+      const message = errorMessage(reason);
       return { status: "paused", detail: message };
     }
     canceledRunIds.current.delete(runId);
@@ -5732,23 +5742,28 @@ export default function BotsApp() {
       runSnapshot = await beginLocalRun(withTrigger, "artifact-plan-ship-local", runId, runEngine);
       applyWorkspace(botId, threadId, runSnapshot);
       if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
-      if (localFileIntent?.kind === "list-folder") {
-        await changeBotStatus(botId, "working", localFileIntent.purpose === "desktop"
+      if (localReadOnly) {
+        await changeBotStatus(botId, "working", projectFile ? `Reading ${projectFile}` : localFileIntent?.kind === "list-folder" && localFileIntent.purpose === "desktop"
           ? "Reading your Desktop"
           : "Reading the selected folder");
         const onRunEvent = (event: ProviderRunEvent) => {
           consumeRunEvent(botId, event, events);
         };
-        const listing = await readLocalFolderListing(runId, onRunEvent);
+        const listing = projectFile
+          ? await readLocalProjectFile(runId, projectFile, onRunEvent)
+          : await readLocalFolderListing(runId, onRunEvent);
         if (listing.status !== "completed" || !listing.context[0]) {
-          throw new Error(events.at(-1)?.message || "Codelit could not list the selected folder.");
+          throw new Error(events.at(-1)?.message || "Codelit could not read the selected files.");
         }
         completedTools = listing.completedTools;
-        const finalAnswer = listing.context[0];
+        const finalAnswer = projectFile
+          ? listing.context[0].split("\n").map((line) => `    ${line}`).join("\n")
+          : listing.context[0];
         await revealValidatedAnswer(botId, runId, finalAnswer);
         updateExecutionStates((current) => commitBotExecution(current, botId, runId));
         let completed = await appendThreadMessage(runSnapshot, finalAnswer, "assistant");
-        const result = localFolderProviderResult(runId, finalAnswer, Date.now() - startedAt);
+        const result = localFolderProviderResult(runId, finalAnswer, Date.now() - startedAt,
+          projectFile ? `Selected project file: ${projectFile}` : undefined);
         completed = await recordProviderRun(
           completed,
           "artifact-plan-ship-local",
@@ -5759,17 +5774,17 @@ export default function BotsApp() {
             botVersion: runBot.currentVersion,
             permissionSnapshot: runBot.spec.permissionPolicy,
             folderName: runWorkspace.workspaceFolder?.path.split("/").pop() || null,
-            scope: "visible-top-level-names",
+            scope: projectFile ? "selected-project-file" : "visible-top-level-names",
             completedTools,
           },
-          `Listed ${runWorkspace.workspaceFolder?.path.split("/").pop() || "the selected folder"} locally`,
+          projectFile ? `Read ${projectFile} locally` : `Listed ${runWorkspace.workspaceFolder?.path.split("/").pop() || "the selected folder"} locally`,
         );
         receiptRecorded = true;
         applyWorkspace(botId, threadId, completed);
-        await changeBotStatus(botId, "done", "Folder checked locally");
+        await changeBotStatus(botId, "done", projectFile ? "File read locally" : "Folder checked locally");
         return {
           status: "completed",
-          detail: "Visible top-level names were listed locally.",
+          detail: projectFile ? "The selected project file was read locally." : "Visible top-level names were listed locally.",
           answer: finalAnswer,
           runId,
         };
@@ -6206,7 +6221,7 @@ export default function BotsApp() {
         runId,
       };
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
+      const message = errorMessage(reason);
       const canceled = /cancel|stop/i.test(message);
       if (browserAction.kind === "action") {
         await discardPreparedLocalToolApproval(runId).catch(() => undefined);
@@ -6314,7 +6329,7 @@ export default function BotsApp() {
       replaceBot(updated);
       setBotFeedback(bot.id, { notice: "Goal completed" });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
     }
   };
 
@@ -6357,7 +6372,7 @@ export default function BotsApp() {
           priorRoutineState.enabled,
         ).then(replaceBot).catch(() => undefined);
       }
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
       await refreshRoutineState().catch(() => undefined);
     } finally {
       setRoutineAction(null);
@@ -6385,7 +6400,7 @@ export default function BotsApp() {
       setSchedules(nextSchedules);
       setBotFeedback(bot.id, { notice: `${schedule.title} paused` });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
       await refreshRoutineState().catch(() => undefined);
     } finally {
       setRoutineAction(null);
@@ -6413,7 +6428,7 @@ export default function BotsApp() {
       setSchedules(nextSchedules);
       setBotFeedback(bot.id, { notice: `${schedule.title} removed` });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
       await refreshRoutineState().catch(() => undefined);
     } finally {
       setRoutineAction(null);
@@ -6460,7 +6475,7 @@ export default function BotsApp() {
           priorRoutineState.enabled,
         ).then(replaceBot).catch(() => undefined);
       }
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
       await refreshRoutineState().catch(() => undefined);
     } finally {
       setRoutineAction(null);
@@ -6488,7 +6503,7 @@ export default function BotsApp() {
       setEventRoutines(nextEventRoutines);
       setBotFeedback(bot.id, { notice: `${routine.title} paused` });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
       await refreshRoutineState().catch(() => undefined);
     } finally {
       setRoutineAction(null);
@@ -6516,7 +6531,7 @@ export default function BotsApp() {
       setEventRoutines(nextEventRoutines);
       setBotFeedback(bot.id, { notice: `${routine.title} removed` });
     } catch (reason) {
-      setBotFeedback(bot.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(bot.id, { error: errorMessage(reason) });
       await refreshRoutineState().catch(() => undefined);
     } finally {
       setRoutineAction(null);
@@ -6669,7 +6684,7 @@ export default function BotsApp() {
           }
         }
       } catch (reason) {
-        const message = reason instanceof Error ? reason.message : String(reason);
+        const message = errorMessage(reason);
         const outcome: BotTaskOutcome = {
           status: /permission|background|provider|engine|sign.?in|quota|attached/i.test(message)
             ? "paused"
@@ -6792,7 +6807,7 @@ export default function BotsApp() {
           ));
         }
       } catch (reason) {
-        const message = reason instanceof Error ? reason.message : String(reason);
+        const message = errorMessage(reason);
         const outcome: BotTaskOutcome = {
           status: /permission|background|provider|engine|sign.?in|quota|attached|memory|skill/i.test(message)
             ? "paused"
@@ -6830,7 +6845,7 @@ export default function BotsApp() {
         setBackgroundService(probe);
         if (probe.status !== "enabled") return;
         await deliverDueDailyDigest().catch((reason) => {
-          if (!disposed) setGlobalError(reason instanceof Error ? reason.message : String(reason));
+          if (!disposed) setGlobalError(errorMessage(reason));
         });
         const claims = await claimDueLocalSchedules(owner, 1, navigator.onLine);
         if (!disposed && claims[0]) {
@@ -6842,7 +6857,7 @@ export default function BotsApp() {
         const eventClaims = await claimChangedEventRoutines(owner, fingerprint, 1);
         if (!disposed && eventClaims[0]) await runEventClaim(eventClaims[0]);
       } catch (reason) {
-        if (!disposed) setGlobalError(reason instanceof Error ? reason.message : String(reason));
+        if (!disposed) setGlobalError(errorMessage(reason));
       }
     };
 
@@ -6882,7 +6897,7 @@ export default function BotsApp() {
     try {
       await cancelIntelligenceTask(runId);
     } catch (reason) {
-      setBotFeedback(botId, { error: reason instanceof Error ? reason.message : String(reason) });
+      setBotFeedback(botId, { error: errorMessage(reason) });
     }
   };
 
@@ -6904,7 +6919,7 @@ export default function BotsApp() {
         return [cancelIntelligenceTask(target.runId)];
       }));
     } catch (reason) {
-      setGlobalError(reason instanceof Error ? reason.message : String(reason));
+      setGlobalError(errorMessage(reason));
       await refreshDelegations().catch(() => undefined);
     } finally {
       setCancelingDelegationId(null);
@@ -7270,10 +7285,6 @@ export default function BotsApp() {
                 )}
                 {engine ? (
                   <span className="bot-scope"><Bot size={14} /> Engine · {providerLabel(providers, engine)}</span>
-                ) : setupAction ? (
-                  <button className="bot-scope setup" onClick={() => void setupOnDevice()} disabled={Boolean(modelSetup)}>
-                    <Download size={14} /> {modelSetup?.message || setupAction.label}
-                  </button>
                 ) : (
                   <button className="bot-scope setup" onClick={() => openSettings("intelligence")}>
                     <Settings2 size={14} /> Set up intelligence
@@ -7585,7 +7596,7 @@ export default function BotsApp() {
           </section>
         </div>
 
-        {(error || notice) && (
+        {!settingsOpen && (error || notice) && (
           <div className={`bots-toast ${error ? "error" : "success"}`} role="status">
             {error ? <CircleAlert size={16} /> : <CheckCircle2 size={16} />}
             <span>{error || notice}</span>
@@ -7988,6 +7999,16 @@ export default function BotsApp() {
               <div><span>Codelit</span><h2 id="bots-settings-title">Settings</h2></div>
               <button className="bots-icon-button" onClick={closeSettings} aria-label="Close settings"><X size={17} /></button>
             </header>
+            {(globalError || globalNotice) && (
+              <div className={`bots-settings-feedback ${globalError ? "error" : "success"}`} role={globalError ? "alert" : "status"}>
+                {globalError ? <CircleAlert size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
+                <span>{globalError || globalNotice}</span>
+                <button className="bots-icon-button" onClick={() => {
+                  setGlobalError(null);
+                  setGlobalNotice(null);
+                }} aria-label="Dismiss settings message"><X size={14} /></button>
+              </div>
+            )}
             <div className="bots-settings-layout">
               <nav className="bots-settings-nav" aria-label="Settings categories">
                 <button
@@ -8073,7 +8094,7 @@ export default function BotsApp() {
                       {setupAction && (
                         <div className="local-model-setup-actions">
                           <button className="bots-primary-button settings-setup" onClick={() => void setupOnDevice()} disabled={Boolean(modelSetup)}>
-                            <Download size={16} /> {modelSetup?.message || setupAction.label}
+                            <Download size={16} /> {modelSetup?.message || (setupAction.label === "Install" ? "Install on-device model" : setupAction.label)}
                           </button>
                           {modelSetup?.runId && (
                             <button className="bot-secondary-action" onClick={() => void cancelModelSetup()}>
@@ -8384,6 +8405,7 @@ export default function BotsApp() {
                         className="bots-setting-row"
                         onClick={() => void exportWorkspace()}
                         disabled={exporting || !isNativeRuntime()}
+                        aria-busy={exporting}
                       >
                         <Download size={17} />
                         <span>

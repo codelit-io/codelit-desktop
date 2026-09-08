@@ -83,6 +83,10 @@ export function appStoreSubmissionIssues(
   }
   push(textIssue(app.name, "App name", 30));
   push(textIssue(app.subtitle, "App subtitle", 30));
+  // App Review rejected build 16 for including "Mac" in the subtitle (5.2.5).
+  if (typeof app.subtitle === "string" && /\bMac\b/i.test(app.subtitle)) {
+    issues.push("Remove Mac from the App Store subtitle to address review guideline 5.2.5.");
+  }
 
   const localized = submission?.localization || {};
   if (localized.locale !== "en-US") issues.push("The first submission must include the en-US localization.");

@@ -74,13 +74,15 @@ mod platform {
     use core_foundation::string::CFString;
     #[cfg(not(feature = "app-store-release"))]
     use core_graphics::geometry::CGRect;
-    use objc2::MainThreadMarker;
+    use objc2::rc::Retained;
     use objc2::runtime::Bool;
+    use objc2::{ClassType, MainThreadMarker};
     #[cfg(not(feature = "app-store-release"))]
     use objc2_app_kit::{NSApplicationActivationOptions, NSApplicationActivationPolicy};
     use objc2_app_kit::{NSModalResponseOK, NSOpenPanel, NSSavePanel, NSWorkspace};
     use objc2_foundation::{
-        NSData, NSString, NSURL, NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions,
+        NSData, NSFileManager, NSSearchPathDirectory, NSSearchPathDomainMask, NSString, NSURL,
+        NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions,
     };
     use objc2_service_management::{SMAppService, SMAppServiceStatus};
     use security_framework::passwords::{
@@ -91,7 +93,7 @@ mod platform {
     use std::fs;
     use std::io::Write;
     use std::os::unix::ffi::OsStrExt;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::OpenOptionsExt;
     use std::path::Path;
 
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25_300;
@@ -462,13 +464,34 @@ mod platform {
         Ok(key)
     }
 
+    fn available_panel<T>(panel: Option<T>, kind: &str) -> Result<T, String> {
+        panel.ok_or_else(|| {
+            format!("macOS could not open the {kind} panel. Your local data has not changed. Try again, or restart Codelit if the problem continues.")
+        })
+    }
+
+    fn save_panel(_main_thread: MainThreadMarker) -> Result<Retained<NSSavePanel>, String> {
+        // AppKit can return nil when its sandbox panel service is unavailable.
+        // The generated non-null binding panics in that case, aborting release builds.
+        // SAFETY: the marker proves main-thread access, and savePanel returns an
+        // autoreleased NSSavePanel. Retaining an optional result handles nil safely.
+        let panel = unsafe { objc2::msg_send![NSSavePanel::class(), savePanel] };
+        available_panel(panel, "save")
+    }
+
+    fn open_panel(_main_thread: MainThreadMarker) -> Result<Retained<NSOpenPanel>, String> {
+        // SAFETY: as above; openPanel returns an autoreleased NSOpenPanel.
+        let panel = unsafe { objc2::msg_send![NSOpenPanel::class(), openPanel] };
+        available_panel(panel, "open")
+    }
+
     pub fn choose_workspace_folder(
         purpose: Option<&str>,
     ) -> Result<Option<FolderBookmark>, String> {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The folder picker must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSOpenPanel::openPanel(main_thread);
+        let panel = open_panel(main_thread)?;
         panel.setCanChooseDirectories(true);
         panel.setCanChooseFiles(false);
         panel.setAllowsMultipleSelection(false);
@@ -500,7 +523,7 @@ mod platform {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The executable picker must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSOpenPanel::openPanel(main_thread);
+        let panel = open_panel(main_thread)?;
         panel.setCanChooseDirectories(false);
         panel.setCanChooseFiles(true);
         panel.setAllowsMultipleSelection(false);
@@ -524,7 +547,7 @@ mod platform {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The export panel must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSSavePanel::savePanel(main_thread);
+        let panel = save_panel(main_thread)?;
         panel.setCanCreateDirectories(true);
         panel.setExtensionHidden(false);
         panel.setNameFieldStringValue(&NSString::from_str("Codelit Workspace.codelit"));
@@ -536,7 +559,7 @@ mod platform {
             .ok_or_else(|| "macOS did not return the export location.".to_string())?;
         let path = local_path(&url)?;
         let started = unsafe { url.startAccessingSecurityScopedResource() };
-        let result = write_atomic(Path::new(&path), bytes);
+        let result = write_atomic(&url, bytes);
         if started {
             unsafe { url.stopAccessingSecurityScopedResource() };
         }
@@ -555,7 +578,7 @@ mod platform {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The export panel must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSSavePanel::savePanel(main_thread);
+        let panel = save_panel(main_thread)?;
         panel.setCanCreateDirectories(true);
         panel.setExtensionHidden(false);
         panel.setNameFieldStringValue(&NSString::from_str(file_name));
@@ -567,7 +590,7 @@ mod platform {
             .ok_or_else(|| "macOS did not return the export location.".to_string())?;
         let path = local_path(&url)?;
         let started = unsafe { url.startAccessingSecurityScopedResource() };
-        let result = write_atomic(Path::new(&path), bytes);
+        let result = write_atomic(&url, bytes);
         if started {
             unsafe { url.stopAccessingSecurityScopedResource() };
         }
@@ -579,7 +602,7 @@ mod platform {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The export panel must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSSavePanel::savePanel(main_thread);
+        let panel = save_panel(main_thread)?;
         panel.setCanCreateDirectories(true);
         panel.setExtensionHidden(false);
         panel.setNameFieldStringValue(&NSString::from_str("Codelit Private Product Report.json"));
@@ -591,7 +614,7 @@ mod platform {
             .ok_or_else(|| "macOS did not return the export location.".to_string())?;
         let path = local_path(&url)?;
         let started = unsafe { url.startAccessingSecurityScopedResource() };
-        let result = write_atomic(Path::new(&path), bytes);
+        let result = write_atomic(&url, bytes);
         if started {
             unsafe { url.stopAccessingSecurityScopedResource() };
         }
@@ -616,7 +639,7 @@ mod platform {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The release panel must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSSavePanel::savePanel(main_thread);
+        let panel = save_panel(main_thread)?;
         panel.setCanCreateDirectories(true);
         panel.setExtensionHidden(false);
         panel.setNameFieldStringValue(&NSString::from_str(file_name));
@@ -628,7 +651,7 @@ mod platform {
             .ok_or_else(|| "macOS did not return the release location.".to_string())?;
         let path = local_path(&url)?;
         let started = unsafe { url.startAccessingSecurityScopedResource() };
-        let result = write_quarantined_atomic(Path::new(&path), bytes, source_url);
+        let result = write_quarantined_atomic(&url, bytes, source_url);
         if started {
             unsafe { url.stopAccessingSecurityScopedResource() };
         }
@@ -640,7 +663,7 @@ mod platform {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The import panel must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSOpenPanel::openPanel(main_thread);
+        let panel = open_panel(main_thread)?;
         panel.setCanChooseDirectories(false);
         panel.setCanChooseFiles(true);
         panel.setAllowsMultipleSelection(false);
@@ -680,7 +703,7 @@ mod platform {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The skill import panel must be opened from the main app thread.".to_string()
         })?;
-        let panel = NSOpenPanel::openPanel(main_thread);
+        let panel = open_panel(main_thread)?;
         panel.setCanChooseDirectories(false);
         panel.setCanChooseFiles(true);
         panel.setAllowsMultipleSelection(false);
@@ -719,50 +742,56 @@ mod platform {
         result.map(Some)
     }
 
-    fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-        let file_name = path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| "The export location has an invalid file name.".to_string())?;
-        let temporary = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
-        let result = (|| {
-            let mut file = fs::File::create(&temporary)
-                .map_err(|error| format!("Could not create the workspace backup: {error}"))?;
-            file.write_all(bytes)
-                .map_err(|error| format!("Could not write the workspace backup: {error}"))?;
-            file.sync_all()
-                .map_err(|error| format!("Could not finish the workspace backup: {error}"))?;
-            fs::rename(&temporary, path)
-                .map_err(|error| format!("Could not replace the workspace backup: {error}"))
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
-        result
+    fn write_atomic(url: &NSURL, bytes: &[u8]) -> Result<(), String> {
+        write_prepared_atomic(url, bytes, |_| Ok(()))
     }
 
-    fn write_quarantined_atomic(path: &Path, bytes: &[u8], source_url: &str) -> Result<(), String> {
+    fn write_quarantined_atomic(url: &NSURL, bytes: &[u8], source_url: &str) -> Result<(), String> {
+        write_prepared_atomic(url, bytes, |temporary| {
+            apply_download_quarantine(temporary, source_url)
+        })
+    }
+
+    fn write_prepared_atomic(
+        url: &NSURL,
+        bytes: &[u8],
+        prepare: impl FnOnce(&Path) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let path = std::path::PathBuf::from(local_path(url)?);
         let file_name = path
             .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| "The release location has an invalid file name.".to_string())?;
-        let temporary = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
+            .ok_or_else(|| "The export location has an invalid file name.".to_string())?;
+        // A Save panel authorizes only the selected file, not arbitrary siblings.
+        // Ask Foundation for writable staging on the destination volume so the
+        // final rename stays atomic even for exports to an external volume.
+        let temporary_url = NSFileManager::defaultManager()
+            .URLForDirectory_inDomain_appropriateForURL_create_error(
+                NSSearchPathDirectory::ItemReplacementDirectory,
+                NSSearchPathDomainMask::UserDomainMask,
+                Some(url),
+                true,
+            )
+            .map_err(|error| format!("Could not prepare the export location: {error}"))?;
+        let temporary_directory = std::path::PathBuf::from(local_path(&temporary_url)?);
+        let temporary = temporary_directory.join(file_name);
         let result = (|| {
-            let mut file = fs::File::create(&temporary)
-                .map_err(|error| format!("Could not create the released file: {error}"))?;
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&temporary)
+                .map_err(|error| format!("Could not create the export: {error}"))?;
             file.write_all(bytes)
-                .map_err(|error| format!("Could not write the released file: {error}"))?;
+                .map_err(|error| format!("Could not write the export: {error}"))?;
+            prepare(&temporary)?;
             file.sync_all()
-                .map_err(|error| format!("Could not finish the released file: {error}"))?;
-            fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600))
-                .map_err(|error| format!("Could not secure the released file: {error}"))?;
-            apply_download_quarantine(&temporary, source_url)?;
-            fs::rename(&temporary, path)
-                .map_err(|error| format!("Could not place the released file: {error}"))
+                .map_err(|error| format!("Could not finish the export: {error}"))?;
+            // Never truncate or remove the selected file before the complete
+            // replacement is ready. A failed rename leaves the original intact.
+            fs::rename(&temporary, &path)
+                .map_err(|error| format!("Could not place the export: {error}"))
         })();
-        if result.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
+        let _ = fs::remove_dir_all(&temporary_directory);
         result
     }
 
@@ -976,18 +1005,89 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::write_quarantined_atomic;
+        use super::{available_panel, write_atomic, write_prepared_atomic, write_quarantined_atomic};
+        use objc2_foundation::{NSString, NSURL};
         use std::ffi::CString;
         use std::fs;
         use std::os::unix::ffi::OsStrExt;
         use std::os::unix::fs::PermissionsExt;
 
         #[test]
+        fn unavailable_native_panel_returns_a_recoverable_error() {
+            for kind in ["save", "open"] {
+                let result =
+                    available_panel::<objc2::rc::Retained<objc2_app_kit::NSSavePanel>>(None, kind);
+                let error = result.expect_err("an unavailable panel must not panic");
+                assert!(error.contains(&format!("could not open the {kind} panel")));
+                assert!(error.contains("Your local data has not changed"));
+            }
+        }
+
+        #[test]
+        fn workspace_export_replaces_the_complete_archive_without_partial_bytes() {
+            let directory = tempfile::tempdir().expect("export directory");
+            let path = directory.path().join("Codelit Workspace.codelit");
+            let url = NSURL::fileURLWithPath_isDirectory(
+                &NSString::from_str(path.to_str().expect("export path")),
+                false,
+            );
+            write_atomic(&url, b"a longer previous backup").expect("first backup");
+            write_atomic(&url, b"new backup").expect("replacement backup");
+            assert_eq!(fs::read(&path).expect("saved archive"), b"new backup");
+            assert_eq!(fs::read_dir(directory.path()).expect("directory").count(), 1);
+            assert_eq!(
+                fs::metadata(&path)
+                    .expect("export metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600,
+            );
+        }
+
+        #[test]
+        fn export_failure_preserves_the_existing_file_and_removes_staging() {
+            let directory = tempfile::tempdir().expect("export directory");
+            let path = directory.path().join("Codelit Workspace.codelit");
+            fs::write(&path, b"original backup").expect("original backup");
+            let url = NSURL::fileURLWithPath_isDirectory(
+                &NSString::from_str(path.to_str().expect("export path")),
+                false,
+            );
+            let mut staging = None;
+            let result = write_prepared_atomic(&url, b"replacement backup", |temporary| {
+                assert_eq!(
+                    fs::read(&path).expect("original still intact"),
+                    b"original backup",
+                );
+                assert_ne!(temporary.parent(), path.parent());
+                staging = Some(temporary.to_path_buf());
+                Err("simulated pre-placement failure".into())
+            });
+            assert!(result.is_err());
+            assert_eq!(
+                fs::read(&path).expect("preserved original"),
+                b"original backup",
+            );
+            assert!(
+                !staging
+                    .expect("allocated staging")
+                    .parent()
+                    .expect("staging directory")
+                    .exists()
+            );
+        }
+
+        #[test]
         fn released_browser_download_is_private_and_quarantined_before_placement() {
             let directory = tempfile::tempdir().expect("release directory");
             let path = directory.path().join("report.pdf");
+            let url = NSURL::fileURLWithPath_isDirectory(
+                &NSString::from_str(path.to_str().expect("export path")),
+                false,
+            );
             write_quarantined_atomic(
-                &path,
+                &url,
                 b"%PDF-1.7\nverified report",
                 "https://example.com/report.pdf?source=a;b",
             )

@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ import {
 import {
   appStoreBundlePermissionIssues,
   appStoreEntitlementBody,
+  appStoreEntitlementIssues,
   appStoreProvisioningIdentifiers,
   botsP1BetaPolicy,
   botsP1BetaPolicyIssues,
@@ -32,6 +33,16 @@ describe("Codelit Mac App Store submission", () => {
 
   it("keeps listing, commerce, privacy, review, and screenshot structure coherent", () => {
     expect(appStoreSubmissionIssues(submission())).toEqual([]);
+  });
+
+  it("prevents the rejected Mac subtitle from returning", () => {
+    const value = submission();
+    value.app.subtitle = "Private AI bots for Mac";
+    expect(appStoreSubmissionIssues(value)).toContain(
+      "Remove Mac from the App Store subtitle to address review guideline 5.2.5.",
+    );
+    value.app.subtitle = "Private AI workspace";
+    expect(appStoreSubmissionIssues(value)).toEqual([]);
   });
 
   it("enforces App Store text limits and a checkout-free local model", () => {
@@ -84,6 +95,42 @@ describe("Codelit Mac App Store submission", () => {
     expect(child).toContain("com.apple.security.inherit");
     expect(child).not.toContain("com.apple.application-identifier");
     expect(child).not.toContain("com.apple.developer.team-identifier");
+  });
+
+  it("grants user-selected writes in both signing paths so native export panels can open", () => {
+    const parent = appStoreEntitlementBody({
+      applicationIdentifier: "TEAM123456.io.codelit.desktop",
+      teamIdentifier: "TEAM123456",
+    });
+    const staticEntitlements = readFileSync(new URL(
+      "../../apps/mac/src-tauri/entitlements/app-store.plist", import.meta.url,
+    ), "utf8");
+    for (const entitlements of [parent, staticEntitlements]) {
+      expect(entitlements).toMatch(/<key>com\.apple\.security\.files\.user-selected\.read-write<\/key>\s*<true\s*\/>/);
+      expect(entitlements).not.toContain("com.apple.security.files.user-selected.read-only");
+    }
+  });
+
+  it("blocks the rejected read-only signature and false write entitlements before release", () => {
+    const entitlements = {
+      "com.apple.security.app-sandbox": true,
+      "com.apple.security.files.user-selected.read-write": true,
+      "com.apple.security.network.client": true,
+    };
+    expect(appStoreEntitlementIssues(entitlements)).toEqual([]);
+    const rejectedSignature = {
+      ...entitlements,
+      "com.apple.security.files.user-selected.read-write": false,
+      "com.apple.security.files.user-selected.read-only": true,
+    };
+    expect(appStoreEntitlementIssues(rejectedSignature)).toEqual([
+      "The App Store bundle must enable com.apple.security.files.user-selected.read-write.",
+      "The App Store bundle contains forbidden entitlement com.apple.security.files.user-selected.read-only.",
+    ]);
+    expect(appStoreEntitlementIssues({
+      ...entitlements,
+      "com.apple.security.files.user-selected.read-write": "true",
+    })).toContain("The App Store bundle must enable com.apple.security.files.user-selected.read-write.");
   });
 
   it("rejects App Store bundle files that non-root users cannot read", () => {

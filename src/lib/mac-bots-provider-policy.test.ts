@@ -369,4 +369,21 @@ describe("Codelit Bots provider policy", () => {
     expect(isBotBrowserSessionOpen(browserSession("ready"), "browser-run-2")).toBe(false);
     expect(isBotBrowserSessionOpen(null, "browser-run-1")).toBe(false);
   });
+
+  it("does not turn an explicitly named project file into a website", () => {
+    expect(parseBotBrowserTarget("Read acceptance.txt from the connected project and quote its two lines."))
+      .toEqual({ kind: "none" });
+    expect(parseBotBrowserTarget('Quote "Docs/Acceptance.TXT" in the selected repository.'))
+      .toEqual({ kind: "none" });
+    expect(parseBotBrowserTarget("Read acceptance.txt from the connected project and inspect https://example.com/docs"))
+      .toMatchObject({ kind: "target", host: "example.com", url: "https://example.com/docs" });
+    expect(parseBotBrowserTarget("Read acceptance.txt from the connected project and inspect example.com"))
+      .toMatchObject({ kind: "target", host: "example.com" });
+    expect(parseBotBrowserTarget("Read https://acceptance.txt from the connected project"))
+      .toMatchObject({ kind: "target", host: "acceptance.txt" });
+    expect(parseBotBrowserTarget("Inspect acceptance.txt"))
+      .toMatchObject({ kind: "target", host: "acceptance.txt" });
+    expect(parseBotBrowserAction('Read acceptance.txt from the connected project then click "Docs" on https://example.com'))
+      .toMatchObject({ kind: "action", request: { host: "example.com", action: "click" } });
+  });
 });

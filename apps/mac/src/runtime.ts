@@ -3251,6 +3251,24 @@ export async function readLocalProjectContext(
   };
 }
 
+export async function readLocalProjectFile(
+  runId: string,
+  path: string,
+  onEvent: (event: ProviderRunEvent) => void,
+): Promise<LocalToolBatchResult> {
+  if (!isNativeRuntime()) throw new Error("Project files can be read only inside Codelit for Mac.");
+  if (!/^[a-z0-9_./-]+\.[a-z0-9]+$/i.test(path)
+    || path.split("/").some((part) => !part || part === "." || part === "..")) {
+    throw new Error("Choose one file inside the connected project using its relative path.");
+  }
+  const eventChannel = new Channel<ProviderRunEvent>();
+  eventChannel.onmessage = onEvent;
+  return invoke<LocalToolBatchResult>("run_local_tool_batch", {
+    request: { runId, tools: ["Selected files"], handoff: `FILES: ${path}`, toolInputs: {} },
+    onEvent: eventChannel,
+  });
+}
+
 export async function readLocalFolderListing(
   runId: string,
   onEvent: (event: ProviderRunEvent) => void,

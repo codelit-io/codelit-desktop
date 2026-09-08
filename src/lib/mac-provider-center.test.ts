@@ -51,14 +51,15 @@ function localProvider(
 
 describe("Mac Provider Center", () => {
   it("separates subscription, metered API, and local choices behind focused tabs", () => {
-    expect(source).toContain(">Subscriptions</h4>");
-    expect(source).toContain(">API keys</h4>");
-    expect(source).toContain(">On this Mac</h4>");
+    expect(source).toContain('label: "Subscriptions"');
+    expect(source).toContain('label: "API keys"');
+    expect(source).toContain('label: "On this Mac"');
     expect(source).toContain('role="tablist"');
     expect(source).toContain('role="tab"');
     expect(source).toContain('role="tabpanel"');
     expect(source).toContain('useState<ProviderCenterView>("local")');
-    expect(source).toContain('aria-selected={view === "local"}');
+    expect(source).toContain('aria-selected={view === id}');
+    expect(source).toContain('tabIndex={view === id ? 0 : -1}');
     expect(source).toContain('view === "subscription" ?');
     expect(source).toContain('view === "api" ?');
     expect(source).toContain('family === "subscription"');

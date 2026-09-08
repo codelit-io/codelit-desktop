@@ -13,8 +13,9 @@ entitlements, updater files, subscription CLIs, or the local scheduler helper.
 - The app uses Mac App Distribution signing, the package uses Mac Installer
   Distribution signing, and the embedded provisioning profile authorizes
   `io.codelit.desktop` for the configured Apple team.
-- The package contains App Sandbox, read-only user-selected files, outbound
-  network access, `PrivacyInfo.xcprivacy`, and no Direct-only files.
+- The package contains App Sandbox, read/write access to user-selected files
+  for explicit exports, outbound network access, `PrivacyInfo.xcprivacy`, and
+  no Direct-only files. Project-folder bookmarks remain read-only.
 - A `testflight-ready` QA receipt may authorize only private TestFlight upload.
   App Review requires the same exact candidate receipt to reach `passed`.
 - Uploading a build does not submit it for App Review. Review submission remains

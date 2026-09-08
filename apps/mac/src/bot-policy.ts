@@ -9,6 +9,7 @@ import type {
   ProviderProbe,
 } from "./contracts";
 import botsP1BetaPolicy from "../bots-p1-beta-policy.json";
+import { projectFileReference } from "./local-file-intent";
 
 export type BotBuildChannel = DesktopUpdateState["channel"];
 
@@ -323,7 +324,9 @@ export type BotBrowserActionResult =
 const WEB_TARGET = /(?:https?:\/\/[^\s<>"'`]+|(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^\s<>"'`]*)?|localhost(?::\d+)?(?:\/[^\s<>"'`]*)?)/i;
 
 export function parseBotBrowserTarget(prompt: string): BotBrowserTargetResult {
-  const match = prompt.match(WEB_TARGET)?.[0];
+  const file = projectFileReference(prompt);
+  const request = file ? `${prompt.slice(0, file.start)} ${prompt.slice(file.end)}` : prompt;
+  const match = request.match(WEB_TARGET)?.[0];
   if (!match) return { kind: "none" };
   const candidate = match.replace(/[),.;!?\]}]+$/g, "");
   const value = /^[a-z]+:\/\//i.test(candidate)
