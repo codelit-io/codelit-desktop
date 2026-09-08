@@ -103,6 +103,9 @@ export default function ConversationFind({
         <input
           ref={inputRef}
           type="text"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           aria-label="Find in conversation"
           aria-describedby="bots-conversation-find-count"
           placeholder="Find in conversation"
