@@ -4344,6 +4344,7 @@ async function auditAppStoreProviderDiscovery(browser, url, records, failures, s
     await checking.waitFor({ state: "visible" });
     await page.evaluate(() => window.__CODELIT_PROVIDER_QA__.finish());
     await checking.waitFor({ state: "hidden" });
+    await page.getByText("Your bots are ready. Some intelligence settings need a refresh.", { exact: true }).waitFor({ state: "hidden" });
     await settings.getByText("Built-in MLX", { exact: true }).waitFor({ state: "visible" });
     await settings.getByRole("button", { name: "Install Quick local", exact: true }).waitFor({ state: "visible" });
     if (await settings.getByRole("tab", { name: "Subscriptions", exact: true }).count() || await settings.getByText("Ollama", { exact: true }).count()) throw new Error("App Store setup showed a policy-blocked provider.");

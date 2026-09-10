@@ -1158,8 +1158,11 @@ export default function BotsApp() {
     }
     if (mcpResult.status === "fulfilled") setMcpServers(mcpResult.value);
     const failure = [providersResult, credentialsResult, updateResult, mcpResult].find((result) => result.status === "rejected");
+    const metadataNotice = "Your bots are ready. Some intelligence settings need a refresh.";
     if (failure) {
-      setGlobalNotice("Your bots are ready. Some intelligence settings need a refresh.");
+      setGlobalNotice(metadataNotice);
+    } else {
+      setGlobalNotice((current) => current === metadataNotice ? null : current);
     }
     return failure;
   }, []);
