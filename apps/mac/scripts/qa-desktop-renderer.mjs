@@ -72,6 +72,8 @@ function installParallelBotTauriFixture(fixtureInput) {
     ? fixtureInput
     : fixtureInput.packagedSkillManifests;
   const enableMcp = !Array.isArray(fixtureInput) && fixtureInput.enableMcp === true;
+  const providerDiscoveryQa = !Array.isArray(fixtureInput) && fixtureInput.providerDiscoveryQa === true;
+  if (providerDiscoveryQa) window.__CODELIT_PROVIDER_QA__ = {};
   const CREATED_AT = "2026-08-14T00:00:00.000Z";
   const callbacks = new Map();
   const workspaces = new Map();
@@ -457,7 +459,18 @@ function installParallelBotTauriFixture(fixtureInput) {
 
   const commands = {
     bootstrap_local_bots: () => catalog(),
-    probe_providers: () => [clone(readyCodex), clone(readyCopilot)],
+    probe_providers: () => providerDiscoveryQa
+      ? new Promise((resolve, reject) => {
+        window.__CODELIT_PROVIDER_QA__.fail = () => reject(new Error("Controlled provider discovery failure"));
+        window.__CODELIT_PROVIDER_QA__.finish = () => resolve([
+          { ...clone(readyCodex), status: "blocked-by-policy", health: "policy-blocked", canRun: false, models: [] },
+          { ...clone(readyCodex), id: "ollama", label: "Ollama", family: "local", status: "blocked-by-policy", health: "policy-blocked", canRun: false, models: [] },
+          { ...clone(readyCodex), id: "mlx", label: "Built-in MLX", family: "local", distribution: "all", status: "not-installed", health: "model-setup-required", canRun: false,
+            models: [{ id: "quick-local", label: "Quick local", local: true, status: "download-required", recommended: true, capabilities: ["structured-output"], detail: "Install the small local model." }],
+          },
+        ]);
+      })
+      : [clone(readyCodex), clone(readyCopilot)],
     probe_provider_api_keys: () => ["openai", "anthropic", "gemini"].map((provider) => ({
       provider,
       account: "default",
@@ -4305,6 +4318,47 @@ async function auditComputerAction(browser, url, matrix, records, failures, scre
   }
 }
 
+async function auditAppStoreProviderDiscovery(browser, url, records, failures, screenshots) {
+  const matrix = matrices.find((candidate) => candidate.id === "release-light");
+  const context = await browser.newContext({ viewport: { width: matrix.width, height: matrix.height }, colorScheme: "light", reducedMotion: "reduce" });
+  await context.addInitScript(installParallelBotTauriFixture, { packagedSkillManifests: builtinSkillManifests, providerDiscoveryQa: true });
+  const page = await context.newPage();
+  const consoleIssues = [];
+  page.on("console", (message) => {
+    if (["warning", "error"].includes(message.type())) consoleIssues.push(`${message.type()}: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => consoleIssues.push(`pageerror: ${error.message}`));
+  try {
+    await page.goto(url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await settings.getByRole("button", { name: "Intelligence", exact: true }).click();
+    const checking = settings.getByText("Checking this Mac's intelligence...", { exact: true });
+    await checking.waitFor({ state: "visible" });
+    if (await settings.getByText("No on-device provider is available in this build.").count()) throw new Error("Pending discovery reported no provider.");
+    await page.evaluate(() => window.__CODELIT_PROVIDER_QA__.fail());
+    await settings.getByText("Intelligence could not be checked. Your saved models have not changed.").waitFor({ state: "visible" });
+    await settings.getByRole("button", { name: "Try again", exact: true }).click();
+    await checking.waitFor({ state: "visible" });
+    await page.evaluate(() => window.__CODELIT_PROVIDER_QA__.finish());
+    await checking.waitFor({ state: "hidden" });
+    await settings.getByText("Built-in MLX", { exact: true }).waitFor({ state: "visible" });
+    await settings.getByRole("button", { name: "Install Quick local", exact: true }).waitFor({ state: "visible" });
+    if (await settings.getByRole("tab", { name: "Subscriptions", exact: true }).count() || await settings.getByText("Ollama", { exact: true }).count()) throw new Error("App Store setup showed a policy-blocked provider.");
+    await settings.getByRole("tab", { name: "API keys", exact: true }).waitFor({ state: "visible" });
+    await page.addScriptTag({ content: axe.source });
+    const record = await auditCurrentSurface(page, matrix, "App Store provider recovery", consoleIssues);
+    records.push(record);
+    failures.push(...record.issues.map((issue) => `App Store provider recovery: ${issue}`));
+    await page.screenshot({ path: resolve(outputDirectory, "app-store-provider-recovery.png") });
+    screenshots.push("app-store-provider-recovery.png");
+  } catch (error) {
+    failures.push(`App Store provider recovery: ${error.message}`);
+  } finally {
+    await context.close();
+  }
+}
+
 async function runRendererQa() {
   mkdirSync(outputDirectory, { recursive: true });
   const port = await availablePort();
@@ -4362,6 +4416,7 @@ async function runRendererQa() {
       await context.close();
     }
     await auditGroundedLocalCapabilities(browser, url, records, failures, screenshots);
+    await auditAppStoreProviderDiscovery(browser, url, records, failures, screenshots);
     await auditParallelBots(browser, url, records, failures, screenshots);
     await auditPersistentBrowserDomains(browser, url, records, failures, screenshots);
     await auditCompactBotHandoff(browser, url, records, failures, screenshots);

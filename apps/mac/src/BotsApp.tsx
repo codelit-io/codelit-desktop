@@ -831,6 +831,7 @@ function localScheduleSaveRequest(schedule: LocalSchedule): SaveLocalScheduleReq
 export default function BotsApp() {
   const [catalog, setCatalog] = useState<LocalBotsSnapshot | null>(null);
   const [providers, setProviders] = useState<ProviderProbe[]>([]);
+  const [providerDiscoveryState, setProviderDiscoveryState] = useState<"loading" | "ready" | "error">("loading");
   const [apiCredentials, setApiCredentials] = useState<ProviderCredentialStatus[]>([]);
   const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<ApiKeyProviderId, string>>({
     openai: "",
@@ -1135,13 +1136,21 @@ export default function BotsApp() {
   }, []);
 
   const refreshStartupMetadata = useCallback(async () => {
+    setProviderDiscoveryState("loading");
+    const providerDiscovery = probeLocalProviders().then((nextProviders) => {
+      setProviders(nextProviders);
+      setProviderDiscoveryState("ready");
+      return nextProviders;
+    }, (reason: unknown) => {
+      setProviderDiscoveryState("error");
+      throw reason;
+    });
     const [providersResult, credentialsResult, updateResult, mcpResult] = await Promise.allSettled([
-      probeLocalProviders(),
+      providerDiscovery,
       probeProviderApiKeys(),
       probeDesktopUpdate(),
       listLocalMcpServers(),
     ]);
-    if (providersResult.status === "fulfilled") setProviders(providersResult.value);
     if (credentialsResult.status === "fulfilled") setApiCredentials(credentialsResult.value);
     if (updateResult.status === "fulfilled") {
       setBuildChannel(updateResult.value.channel);
@@ -8241,6 +8250,8 @@ export default function BotsApp() {
                     <Suspense fallback={<DeferredSurface label="Opening intelligence settings" />}>
                       <ProviderCenter
                         providers={providers}
+                        discoveryState={providerDiscoveryState}
+                        onRetryDiscovery={() => { void refreshStartupMetadata(); }}
                         credentials={apiCredentials}
                         busyProviderId={providerCredentialBusy || openingProvider}
                         apiKeyDrafts={apiKeyDrafts}

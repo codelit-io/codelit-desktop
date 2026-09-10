@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import ProviderCenter, { type ProviderCenterProps } from "../../apps/mac/src/components/ProviderCenter";
 import {
+  isProviderAvailableInBuild,
   localProviderSummary,
   managedLocalSetup,
   subscriptionProviderAction,
@@ -50,6 +54,42 @@ function localProvider(
 }
 
 describe("Mac Provider Center", () => {
+  const renderCenter = (overrides: Partial<ProviderCenterProps> = {}) => renderToStaticMarkup(createElement(ProviderCenter, {
+    providers: [], credentials: [], busyProviderId: null, apiKeyDrafts: {}, setupState: null,
+    onApiKeyDraftChange: () => {}, onSaveApiKey: () => {}, onDeleteApiKey: () => {},
+    onSignIn: () => {}, onOpenSetup: () => {}, onSetupLocalModel: () => {},
+    onDiscoverLocalModels: async () => { throw new Error("Not used"); },
+    onOpenLocalModelPage: () => {}, onCancelLocalModelSetup: () => {},
+    ...overrides,
+  }));
+
+  it("hides policy-blocked providers without hiding usable Direct providers", () => {
+    const provider = { ...localProvider("download-required"), distribution: "direct-only" as const };
+    expect(isProviderAvailableInBuild(provider)).toBe(true);
+    expect(isProviderAvailableInBuild({ ...provider, status: "blocked-by-policy" })).toBe(false);
+    expect(isProviderAvailableInBuild({ ...provider, health: "policy-blocked" })).toBe(false);
+    expect(isProviderAvailableInBuild({ ...provider, distribution: "unsupported" })).toBe(false);
+    const html = renderCenter({ providers: [localProvider("download-required"), {
+      ...provider, id: "ollama", label: "Ollama", status: "blocked-by-policy",
+    }, {
+      ...provider, id: "codex", label: "Codex", family: "subscription", status: "blocked-by-policy",
+    }] });
+    expect(html).toContain("Built-in MLX");
+    expect(html).not.toContain("Ollama");
+    expect(html).not.toContain("Subscriptions");
+  });
+
+  it("does not declare local providers unavailable while checking or after a failed check", () => {
+    const loading = renderCenter({ discoveryState: "loading" });
+    expect(loading).toContain("Checking this Mac&#x27;s intelligence...");
+    expect(loading).not.toContain("No on-device provider");
+    const failed = renderCenter({ discoveryState: "error", onRetryDiscovery: () => {} });
+    expect(failed).toContain("Intelligence could not be checked");
+    expect(failed).toContain("Try again");
+    expect(failed).not.toContain("No on-device provider");
+    expect(renderCenter()).toContain("No on-device provider is available");
+  });
+
   it("separates subscription, metered API, and local choices behind focused tabs", () => {
     expect(source).toContain('label: "Subscriptions"');
     expect(source).toContain('label: "API keys"');

@@ -9,7 +9,7 @@
 
 ## Suggested review path
 
-### First-time local model setup (build 18)
+### First-time local model setup (build 19)
 
 Requires an Apple-silicon Mac running macOS 14 or later, with at least 8 GB
 unified memory. This is an arm64 app, not an Intel-compatible universal build.
@@ -32,6 +32,10 @@ runtime allowlist. Build 18 removes that restriction in discovery and download
 preparation. It checks model-specific minimum memory, disk capacity, pinned
 file hashes, and a real on-device benchmark instead. The recorded physical QA
 history is unchanged; it is not a claim that every hardware class was tested.
+
+Build 19 additionally shows progress while discovering providers, offers a retry
+after a failed discovery, and hides providers explicitly blocked by the App Store
+sandbox. A pending discovery no longer claims that no on-device provider exists.
 
 ### Workspace walkthrough
 

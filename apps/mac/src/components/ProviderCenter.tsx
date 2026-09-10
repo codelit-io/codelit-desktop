@@ -35,6 +35,8 @@ export interface ProviderCenterSetupState {
 
 export interface ProviderCenterProps {
   providers: ProviderProbe[];
+  discoveryState?: "loading" | "ready" | "error";
+  onRetryDiscovery?: () => void;
   credentials: ProviderCredentialStatus[];
   busyProviderId: ProviderProbe["id"] | null;
   apiKeyDrafts: Partial<Record<ApiKeyProviderId, string>>;
@@ -74,6 +76,12 @@ const API_PROVIDERS: readonly ApiProviderPresentation[] = [
   { id: "anthropic", label: "Anthropic API", keyPlaceholder: "Paste Anthropic API key" },
   { id: "gemini", label: "Gemini API", keyPlaceholder: "Paste Gemini API key" },
 ];
+
+export function isProviderAvailableInBuild(provider: ProviderProbe) {
+  return provider.distribution !== "unsupported"
+    && provider.status !== "blocked-by-policy"
+    && provider.health !== "policy-blocked";
+}
 
 export function localProviderSummary(provider: ProviderProbe) {
   const model = preferredProviderModel(provider);
@@ -448,6 +456,8 @@ function LiveModelCandidate({
 
 export default function ProviderCenter({
   providers,
+  discoveryState = "ready",
+  onRetryDiscovery,
   credentials,
   busyProviderId,
   apiKeyDrafts,
@@ -466,8 +476,9 @@ export default function ProviderCenter({
   const [discovery, setDiscovery] = useState<LocalModelDiscovery | null>(null);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-  const subscriptions = providers.filter((provider) => provider.family === "subscription" && provider.distribution !== "unsupported");
-  const localProviders = providers.filter((provider) => provider.family === "local" && provider.distribution !== "unsupported");
+  const availableProviders = providers.filter(isProviderAvailableInBuild);
+  const subscriptions = availableProviders.filter((provider) => provider.family === "subscription");
+  const localProviders = availableProviders.filter((provider) => provider.family === "local");
   const views = PROVIDER_VIEWS.filter((candidate) => candidate.id !== "subscription" || subscriptions.length > 0);
   const activeView = views.some((candidate) => candidate.id === view) ? view : "local";
   const presentation = views.find((candidate) => candidate.id === activeView)!;
@@ -542,6 +553,21 @@ export default function ProviderCenter({
             </div>
             <ProviderBadge family={activeView} />
           </div>
+          {discoveryState === "loading" ? (
+            <p className="provider-center-setup-progress" role="status">
+              <LoaderCircle className="provider-center-spinner" size={15} aria-hidden="true" />
+              Checking this Mac's intelligence...
+            </p>
+          ) : discoveryState === "error" ? (
+            <div className="provider-center-discovery-error" role="alert">
+              <p>Intelligence could not be checked. Your saved models have not changed.</p>
+              {onRetryDiscovery ? (
+                <button type="button" className="provider-center-action" onClick={onRetryDiscovery}>
+                  <RefreshCw size={14} aria-hidden="true" /> Try again
+                </button>
+              ) : null}
+            </div>
+          ) : null}
       {activeView === "local" ? (
         <>
           {setupState ? (
@@ -575,7 +601,7 @@ export default function ProviderCenter({
                 onOpenSetup={onOpenSetup}
               />
             ))}
-            {localProviders.length === 0 ? (
+            {discoveryState === "ready" && localProviders.length === 0 ? (
               <p className="provider-center-empty">No on-device provider is available in this build.</p>
             ) : null}
           </div>
