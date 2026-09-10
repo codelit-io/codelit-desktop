@@ -15,11 +15,11 @@ import { basename, join, resolve } from "node:path";
 import { appRoot, repositoryRoot, tauriRoot } from "./release-support.mjs";
 
 export const candidateQaMemoryClasses = [
-  { id: "8-gb", memoryGiB: 8, osClass: "minimum", localModel: "unavailable-as-designed" },
-  { id: "16-gb", memoryGiB: 16, osClass: "previous", localModel: "unavailable-as-designed" },
-  { id: "24-gb", memoryGiB: 24, osClass: "current", localModel: "unavailable-as-designed" },
+  { id: "8-gb", memoryGiB: 8, osClass: "minimum", localModel: "passed" },
+  { id: "16-gb", memoryGiB: 16, osClass: "previous", localModel: "passed" },
+  { id: "24-gb", memoryGiB: 24, osClass: "current", localModel: "passed" },
   { id: "32-gb", memoryGiB: 32, osClass: "current", localModel: "passed" },
-  { id: "64-gb", memoryGiB: 64, osClass: "current", localModel: "unavailable-as-designed" },
+  { id: "64-gb", memoryGiB: 64, osClass: "current", localModel: "passed" },
 ];
 
 const commonChecks = [

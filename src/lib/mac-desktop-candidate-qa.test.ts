@@ -219,9 +219,9 @@ describe("Codelit Mac signed-candidate QA", () => {
     );
   });
 
-  it("keeps unproven model classes unavailable while requiring the measured 32 GB pass", () => {
+  it("requires working local models instead of treating non-32 GB Macs as unavailable by design", () => {
     const value = receipt("direct");
-    value.environmentCoverage.find((entry) => entry.memoryClass === "16-gb")!.localModel = "passed";
+    value.environmentCoverage.find((entry) => entry.memoryClass === "16-gb")!.localModel = "unavailable-as-designed";
     value.environmentCoverage.find((entry) => entry.memoryClass === "32-gb")!.localModel = "unavailable-as-designed";
 
     const issues = candidateQaReceiptIssues(value);
