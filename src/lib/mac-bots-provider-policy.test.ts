@@ -142,6 +142,15 @@ describe("Codelit Bots provider policy", () => {
     });
   });
 
+  it("starts with the smallest compatible model on a fresh Mac", () => {
+    const quick = { ...model("download-required"), id: "quick", downloadBytes: 350_000_000 };
+    const capable = { ...model("download-required"), id: "capable", downloadBytes: 4_600_000_000 };
+    const mlx = { ...provider("mlx"), models: [capable, quick] };
+    expect(preferredOnDeviceSetupModel(mlx)?.id).toBe("quick");
+    expect(preferredOnDeviceSetupModel({ ...mlx, models: [{ ...capable, status: "incompatible", installedBytes: undefined }, quick] })?.id).toBe("quick");
+    expect(preferredOnDeviceSetupModel({ ...mlx, models: [{ ...quick, status: "incompatible", installedBytes: undefined }] })).toBeUndefined();
+  });
+
   it("keeps channel-specific engines, browser reads, and routines closed until native identity is known", () => {
     expect(botsApp).toContain('useState<BotBuildChannel>("app-store")');
     expect(botsApp).toContain("const [buildChannelReady, setBuildChannelReady] = useState(false)");

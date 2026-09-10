@@ -9,6 +9,7 @@ interface EnginePickerProps {
   label?: string;
   compact?: boolean;
   disabled?: boolean;
+  onSetup?: () => void;
 }
 
 function optionValue(provider: ProviderProbe["id"], model: string) {
@@ -38,6 +39,7 @@ export default function EnginePicker({
   label = "Intelligence engine",
   compact = false,
   disabled = false,
+  onSetup,
 }: EnginePickerProps) {
   const groups = providers
     .map((provider) => ({ provider, models: runnableModels(provider) }))
@@ -45,6 +47,14 @@ export default function EnginePicker({
   const selection = value && groups.some(({ provider, models }) => (
     provider.id === value.provider && models.some((model) => model.id === value.model)
   )) ? value : null;
+
+  if (!groups.length && onSetup) {
+    return (
+      <button type="button" className="engine-picker" disabled={disabled} onClick={onSetup}>
+        <Bot size={14} aria-hidden="true" /> Set up intelligence
+      </button>
+    );
+  }
 
   return (
     <label className={`engine-picker${compact ? " compact" : ""}`}>

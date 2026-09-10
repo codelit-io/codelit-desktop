@@ -58,10 +58,12 @@ describe("Mac Provider Center", () => {
     expect(source).toContain('role="tab"');
     expect(source).toContain('role="tabpanel"');
     expect(source).toContain('useState<ProviderCenterView>("local")');
-    expect(source).toContain('aria-selected={view === id}');
-    expect(source).toContain('tabIndex={view === id ? 0 : -1}');
-    expect(source).toContain('view === "subscription" ?');
-    expect(source).toContain('view === "api" ?');
+    expect(source).toContain('aria-selected={activeView === id}');
+    expect(source).toContain('tabIndex={activeView === id ? 0 : -1}');
+    expect(source).toContain('activeView === "subscription" ?');
+    expect(source).toContain('activeView === "api" ?');
+    expect(source).toContain('candidate.id !== "subscription" || subscriptions.length > 0');
+    expect(source).toContain('provider.distribution !== "unsupported"');
     expect(source).toContain('family === "subscription"');
     expect(source).toContain('family === "api"');
     expect(source).toContain('family === "local"');

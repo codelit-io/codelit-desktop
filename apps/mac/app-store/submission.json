@@ -4,7 +4,7 @@
     "name": "Codelit",
     "subtitle": "Private AI workspace",
     "bundleId": "io.codelit.desktop",
-    "build": "17",
+    "build": "18",
     "sku": "codelit-mac",
     "platform": "macOS",
     "minimumSystemVersion": "14.0",
@@ -18,7 +18,7 @@
     "promotionalText": "Create persistent AI bots that remember approved context, collaborate on work, and run with private on-device intelligence on your Mac.",
     "description": "Codelit gives you a small team of persistent AI bots that lives on your Mac. Create a bot in plain language, talk through the work, and keep each conversation, run, memory, and skill together in one focused workspace.\n\nStart without an account. Codelit can use its built-in on-device model on supported Macs, so local prompts and model output stay on the device. You can also select a user-owned API provider when you explicitly choose it. Codelit never silently changes billing families.\n\nEach bot has a clear job, approved memory, reusable skills, a local data table, and an inspectable history. Add specialist bots to a conversation when a task benefits from another perspective. Runs show a clear status while private safety records preserve approvals and failures without cluttering the conversation.\n\nThe Mac App Store version supports local conversations, bots, memories, skills, multi-bot handoffs, selected-folder reads, and private local run history. It does not request Accessibility or Screen Recording access, and it does not include background routines, automated website inspection, or computer control.",
     "keywords": "ai bots,local ai,ai assistant,on-device ai,automation,developer tools,memory,agents",
-    "releaseNotes": "Fixes local-data export crashes and improves sandboxed saving. Adds Find in Conversation with Command-F, match navigation, and one-click copying of answers and code. Refines light and dark appearances, contrast, and keyboard focus. Improves provider recovery and reads selected project files without requiring an AI model.",
+    "releaseNotes": "Fixes local model setup on Apple-silicon Macs with 8 GB or more memory. First-time setup starts with the small local model and checks it on your device before use. Adds a direct setup action when no engine is ready and removes unavailable provider choices from the App Store settings. Includes the local-data export, conversation search, and appearance improvements from the previous build.",
     "copyright": "2026 Codelit.io"
   },
   "urls": {

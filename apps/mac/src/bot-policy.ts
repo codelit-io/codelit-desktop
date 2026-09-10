@@ -222,6 +222,13 @@ export function preferredProviderModel(provider: ProviderProbe) {
 }
 
 export function preferredOnDeviceSetupModel(provider: ProviderProbe) {
+  if (!provider.models.some((model) => model.status === "ready")) {
+    const candidates = provider.models.filter((model) => onDeviceModelSetupAction(model) !== null);
+    // First use should download the smallest compatible model, not several GB.
+    return candidates.reduce<ProviderModel | undefined>((best, model) => (
+      !best || (model.downloadBytes || 0) < (best.downloadBytes || 0) ? model : best
+    ), undefined);
+  }
   const preferred = preferredProviderModel(provider);
   const preferredBytes = preferred?.status === "ready" ? preferred.downloadBytes || 0 : 0;
   const upgrade = provider.models

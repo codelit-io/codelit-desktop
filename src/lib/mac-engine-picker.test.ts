@@ -33,6 +33,15 @@ function render(value: IntelligenceSelection | null, providers = [provider]) {
 }
 
 describe("Mac engine selection", () => {
+  it("offers an actionable setup button when no engines are ready", () => {
+    const html = renderToStaticMarkup(createElement(EnginePicker, {
+      providers: [], value: null, onChange: () => undefined, onSetup: () => undefined,
+    }));
+    expect(html).toContain("Set up intelligence");
+    expect(html).toContain('<button type="button"');
+    expect(html).not.toContain("disabled");
+    expect(html).not.toContain("<select");
+  });
   it("requires an explicit selection when only a metered engine is ready outside Auto", () => {
     const html = render(null);
     expect(html).toContain('<option value="" disabled="" selected="">Choose an engine</option>');

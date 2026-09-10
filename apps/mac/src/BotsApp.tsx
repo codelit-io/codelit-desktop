@@ -8084,6 +8084,7 @@ export default function BotsApp() {
                           providers={eligibleProviders}
                           value={engine}
                           onChange={(selection) => void changeEngine(selection)}
+                          onSetup={() => selectSettingsSection("intelligence")}
                           disabled={savingEngine || runState !== "idle"}
                         />
                       </div>

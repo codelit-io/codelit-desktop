@@ -115,17 +115,7 @@ pub fn probe_model_by_id(app_data_dir: &Path, model_id: &str) -> Result<Provider
 pub fn prepare_download(app_data_dir: &Path, model_id: &str) -> Result<ModelManifestEntry, String> {
     let model = manifest_entry(model_id)?;
     let resources = MachineResources::read(app_data_dir);
-    if resources.memory_bytes > 0 && resources.memory_bytes < model.minimum_memory_bytes {
-        return Err(format!(
-            "This model needs at least {} GB unified memory.",
-            bytes_to_gib(model.minimum_memory_bytes)
-        ));
-    }
-    if release_hardware_gate_enabled()
-        && !release_memory_is_validated(&model, resources.memory_bytes)
-    {
-        return Err(release_memory_message(&model));
-    }
+    ensure_model_memory(&model, resources.memory_bytes)?;
     if resources.free_disk_bytes > 0
         && resources.free_disk_bytes < model.download_bytes.saturating_mul(2)
     {
@@ -191,34 +181,16 @@ fn probe_model(
     let root = cache_root(app_data_dir, &model.id)?;
     let snapshot = root.join("snapshots").join(&model.revision);
     let partial = root.exists();
-    let enough_memory =
-        resources.memory_bytes == 0 || resources.memory_bytes >= model.minimum_memory_bytes;
     let enough_disk = resources.free_disk_bytes == 0
         || resources.free_disk_bytes >= model.download_bytes.saturating_mul(2);
 
-    if !enough_memory {
+    if let Err(detail) = ensure_model_memory(model, resources.memory_bytes) {
         return Ok(model_view(
             model,
             "incompatible",
             None,
             false,
-            format!(
-                "Needs at least {} GB unified memory.",
-                bytes_to_gib(model.minimum_memory_bytes)
-            ),
-            None,
-        ));
-    }
-
-    if release_hardware_gate_enabled()
-        && !release_memory_is_validated(model, resources.memory_bytes)
-    {
-        return Ok(model_view(
-            model,
-            "incompatible",
-            None,
-            false,
-            release_memory_message(model),
+            detail,
             None,
         ));
     }
@@ -454,30 +426,19 @@ fn validate_manifest(manifest: &ModelManifest) -> Result<(), String> {
     Ok(())
 }
 
-fn release_hardware_gate_enabled() -> bool {
-    cfg!(any(
-        feature = "direct-release",
-        feature = "app-store-release"
-    ))
-}
-
-fn release_memory_is_validated(model: &ModelManifestEntry, memory_bytes: u64) -> bool {
-    memory_bytes > 0
-        && model
-            .release_validated_memory_gib
-            .contains(&(memory_bytes / (1024 * 1024 * 1024)))
-}
-
-fn release_memory_message(model: &ModelManifestEntry) -> String {
-    let classes = model
-        .release_validated_memory_gib
-        .iter()
-        .map(|memory| format!("{memory} GB"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "This release enables the built-in model only on physically validated {classes} Macs. Use another available engine or Codelit Cloud on this Mac."
-    )
+fn ensure_model_memory(model: &ModelManifestEntry, memory_bytes: u64) -> Result<(), String> {
+    // Physical QA history is evidence, not a hardware allowlist. Every device
+    // must still verify model files and pass its own benchmark before use.
+    if memory_bytes == 0 {
+        return Err("Codelit could not check this Mac's memory. Restart the app and try again.".into());
+    }
+    if memory_bytes < model.minimum_memory_bytes {
+        return Err(format!(
+            "Needs at least {} GB unified memory. Choose a smaller local model or connect an API provider.",
+            bytes_to_gib(model.minimum_memory_bytes)
+        ));
+    }
+    Ok(())
 }
 
 fn is_safe_model_id(value: &str) -> bool {
@@ -602,18 +563,43 @@ mod tests {
     }
 
     #[test]
-    fn release_model_support_is_limited_to_measured_memory_classes() {
-        let model = manifest_entry("mlx-community/Qwen3-0.6B-4bit").expect("model");
-        assert!(release_memory_is_validated(&model, 32 * 1024 * 1024 * 1024));
-        assert!(!release_memory_is_validated(
-            &model,
-            16 * 1024 * 1024 * 1024
-        ));
-        assert!(!release_memory_is_validated(
-            &model,
-            64 * 1024 * 1024 * 1024
-        ));
-        assert!(!release_memory_is_validated(&model, 0));
+    fn model_admission_uses_capacity_not_an_exact_qa_memory_class() {
+        let directory = tempdir().expect("temporary directory");
+        for gib in [8, 16, 18, 24, 32, 36, 48, 64, 96, 128, 256, 512] {
+            for model in manifest().unwrap().models {
+                let resources = MachineResources {
+                    memory_bytes: gib * 1024 * 1024 * 1024,
+                    free_disk_bytes: 64 * 1024 * 1024 * 1024,
+                };
+                let eligible = resources.memory_bytes >= model.minimum_memory_bytes;
+                assert_eq!(ensure_model_memory(&model, resources.memory_bytes).is_ok(), eligible);
+                let view = probe_model(directory.path(), &model, resources).unwrap();
+                assert_eq!(view.status, if eligible { "download-required" } else { "incompatible" });
+                assert!(view.benchmark.is_none());
+            }
+        }
+        let model = manifest_entry("mlx-community/Qwen3-0.6B-4bit").unwrap();
+        for bytes in [0, 4 * 1024 * 1024 * 1024, model.minimum_memory_bytes - 1] {
+            assert!(ensure_model_memory(&model, bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn capacity_does_not_bypass_file_integrity_or_local_benchmark() {
+        let directory = tempdir().unwrap();
+        let mut model = manifest_entry("mlx-community/Qwen3-0.6B-4bit").unwrap();
+        model.files = vec![ModelFile {
+            path: "model.bin".into(), bytes: 5,
+            sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".into(),
+        }];
+        let snapshot = cache_root(directory.path(), &model.id).unwrap().join("snapshots").join(&model.revision);
+        fs::create_dir_all(&snapshot).unwrap();
+        let resources = MachineResources { memory_bytes: 8 * 1024 * 1024 * 1024, free_disk_bytes: 64 * 1024 * 1024 * 1024 };
+        assert_eq!(probe_model(directory.path(), &model, resources).unwrap().status, "corrupt");
+        fs::write(snapshot.join("model.bin"), b"wrong").unwrap();
+        assert_eq!(probe_model(directory.path(), &model, resources).unwrap().status, "corrupt");
+        fs::write(snapshot.join("model.bin"), b"hello").unwrap();
+        assert_eq!(probe_model(directory.path(), &model, resources).unwrap().status, "benchmark-required");
     }
 
     #[test]

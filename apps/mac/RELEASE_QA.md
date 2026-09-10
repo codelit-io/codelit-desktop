@@ -181,11 +181,12 @@ memory, macOS version, and result. Never reuse an ad hoc result.
 
 Test the minimum, previous, and current supported macOS releases across the
 locked 8 GB, 16 GB, 24 GB, 32 GB, and 64 GB Apple Silicon receipt environments.
-Local-model availability must
-remain disabled for any hardware class that has not passed its model benchmark.
-The first release manifest enables the bundled model only for the measured
-32 GB class. Add another exact memory size to `releaseValidatedMemoryGiB` only
-after the signed candidate passes this matrix on that hardware.
+Local-model availability remains disabled until the model passes its on-device
+benchmark. Starting with build 18, installation admission uses each model's
+minimum RAM requirement, not membership in a fixed list of physical QA machines.
+`releaseValidatedMemoryGiB` records physical test history only; never add a
+memory size without corresponding physical evidence. Capacity-matrix unit tests
+are regression checks, not claims of physical-device qualification.
 
 ## Publication stop
 

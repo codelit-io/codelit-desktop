@@ -463,12 +463,14 @@ export default function ProviderCenter({
   setupState,
 }: ProviderCenterProps) {
   const [view, setView] = useState<ProviderCenterView>("local");
-  const presentation = PROVIDER_VIEWS.find((candidate) => candidate.id === view)!;
   const [discovery, setDiscovery] = useState<LocalModelDiscovery | null>(null);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-  const subscriptions = providers.filter((provider) => provider.family === "subscription");
-  const localProviders = providers.filter((provider) => provider.family === "local");
+  const subscriptions = providers.filter((provider) => provider.family === "subscription" && provider.distribution !== "unsupported");
+  const localProviders = providers.filter((provider) => provider.family === "local" && provider.distribution !== "unsupported");
+  const views = PROVIDER_VIEWS.filter((candidate) => candidate.id !== "subscription" || subscriptions.length > 0);
+  const activeView = views.some((candidate) => candidate.id === view) ? view : "local";
+  const presentation = views.find((candidate) => candidate.id === activeView)!;
   const mlxProvider = localProviders.find((provider) => provider.id === "mlx");
   const externalLocalProviders = localProviders.filter((provider) => provider.id !== "mlx");
 
@@ -510,16 +512,16 @@ export default function ProviderCenter({
       </header>
 
       <div className="provider-center-tabs" role="tablist" aria-label="Provider type" onKeyDown={onTabKeyDown}>
-        {PROVIDER_VIEWS.map(({ id, label, Icon }) => (
+        {views.map(({ id, label, Icon }) => (
           <button
             key={id}
             id={`provider-center-${id}-tab`}
             type="button"
             role="tab"
-            aria-selected={view === id}
-            tabIndex={view === id ? 0 : -1}
+            aria-selected={activeView === id}
+            tabIndex={activeView === id ? 0 : -1}
             aria-controls={`provider-center-${id}-panel`}
-            className={view === id ? "selected" : undefined}
+            className={activeView === id ? "selected" : undefined}
             onClick={() => setView(id)}
           >
             <Icon size={14} aria-hidden="true" /> {label}
@@ -528,19 +530,19 @@ export default function ProviderCenter({
       </div>
 
       <section
-          id={`provider-center-${view}-panel`}
+          id={`provider-center-${activeView}-panel`}
           className="provider-center-section"
           role="tabpanel"
-          aria-labelledby={`provider-center-${view}-tab`}
+          aria-labelledby={`provider-center-${activeView}-tab`}
         >
           <div className="provider-center-section-heading">
             <div>
               <h4>{presentation.label}</h4>
               <p>{presentation.description}</p>
             </div>
-            <ProviderBadge family={view} />
+            <ProviderBadge family={activeView} />
           </div>
-      {view === "local" ? (
+      {activeView === "local" ? (
         <>
           {setupState ? (
             <div className="provider-center-setup-progress" role="status" aria-live="polite">
@@ -618,7 +620,7 @@ export default function ProviderCenter({
         </>
       ) : null}
 
-      {view === "subscription" ? (
+      {activeView === "subscription" ? (
           <div className="provider-center-list">
             {subscriptions.length > 0 ? subscriptions.map((provider) => (
               <SubscriptionProviderRow
@@ -633,7 +635,7 @@ export default function ProviderCenter({
           </div>
       ) : null}
 
-      {view === "api" ? (
+      {activeView === "api" ? (
           <div className="provider-center-list">
             {API_PROVIDERS.map((presentation) => (
               <ApiKeyProviderRow

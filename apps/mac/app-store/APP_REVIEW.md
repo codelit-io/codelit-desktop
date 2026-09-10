@@ -9,11 +9,37 @@
 
 ## Suggested review path
 
+### First-time local model setup (build 18)
+
+Requires an Apple-silicon Mac running macOS 14 or later, with at least 8 GB
+unified memory. This is an arm64 app, not an Intel-compatible universal build.
+
+1. Open the seeded Codelit bot. Click its engine/setup button or open Settings
+   > Intelligence > On this Mac.
+2. Under Built-in MLX, click Install beside `Qwen 3 0.6B - Quick local` (334 MB).
+   The network is needed for this initial model-weight download. No account,
+   subscription, API key, terminal, or separate application is required.
+3. Keep Codelit open while it verifies the files and runs the on-device check.
+   Wait for Ready. If interrupted, Resume continues setup. A failed check does
+   not mark the model ready; its error remains visible.
+4. Close Settings, leave the bot on Auto, and send:
+   `Write one short sentence explaining what a checklist is.`
+5. The downloaded model can then run offline. An optional Qwen 3 8B model is
+   available on Macs with at least 16 GB RAM (24 GB recommended; 4.3 GB download).
+
+Build 17 incorrectly used our recorded 32 GB test-machine class as an exact
+runtime allowlist. Build 18 removes that restriction in discovery and download
+preparation. It checks model-specific minimum memory, disk capacity, pinned
+file hashes, and a real on-device benchmark instead. The recorded physical QA
+history is unchanged; it is not a claim that every hardware class was tested.
+
+### Workspace walkthrough
+
 1. Launch Codelit and open the seeded `Codelit` bot.
 2. Select `New bot`, describe one job, and create the bot.
 3. Select the bot name to customize its identity. Review its current goal in the workspace, then use the conversation to approve a memory or teach a reusable skill.
 4. Add another bot as a conversation teammate, then remove it. No account or network service is required.
-5. Open Settings > Intelligence. The built-in model download is optional for reviewing the workspace. On supported hardware, download it and send a short prompt to verify an on-device run and local receipt.
+5. Complete the first-time local model setup above before reviewing AI replies.
 6. Choose a project folder. Codelit uses read-only bookmarks and tools for the selected project, and removing the project revokes that access.
 7. Open All activity to inspect completed work and multi-bot handoffs. The App Store build clearly identifies background routines as unavailable.
 8. Open Settings > Privacy and confirm automated website inspection and computer control remain unavailable in this profile.
