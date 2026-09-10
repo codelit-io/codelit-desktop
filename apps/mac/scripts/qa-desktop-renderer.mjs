@@ -4330,6 +4330,8 @@ async function auditAppStoreProviderDiscovery(browser, url, records, failures, s
   page.on("pageerror", (error) => consoleIssues.push(`pageerror: ${error.message}`));
   try {
     await page.goto(url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /Checking intelligence/ }).waitFor({ state: "visible" });
+    if ((await page.getByLabel("Message Alpha").getAttribute("placeholder"))?.includes("set up intelligence")) throw new Error("Pending discovery told the user to set up again.");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings.getByRole("button", { name: "Intelligence", exact: true }).click();

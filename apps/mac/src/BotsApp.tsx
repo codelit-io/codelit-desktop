@@ -7697,7 +7697,7 @@ export default function BotsApp() {
                 ? `Review ${pendingBrowserRun.target.host} above to continue...`
                 : pendingComputerRun
                   ? `Review the ${pendingComputerRun.app.appName} action above to continue...`
-                : engine
+                : engine || providerDiscoveryState === "loading"
                   ? activeGroupMembers.length
                     ? `Ask ${bot.name} or the team...`
                     : `Ask ${bot.name} to do something...`
@@ -7756,7 +7756,7 @@ export default function BotsApp() {
                 </button>
               )}
               <button className="composer-engine-button" onClick={() => openSettings("intelligence")}>
-                {bot.spec.enginePolicy.mode === "auto" ? "Auto" : "Fixed"} · {providerLabel(providers, engine)}
+                {bot.spec.enginePolicy.mode === "auto" ? "Auto" : "Fixed"} · {!engine && providerDiscoveryState === "loading" ? "Checking intelligence" : providerLabel(providers, engine)}
               </button>
               <button
                 className="bots-send-button"
