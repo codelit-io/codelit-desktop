@@ -190,7 +190,22 @@ are regression checks, not claims of physical-device qualification.
 
 ## Publication stop
 
-Do not publish Direct `latest.json`, submit the App Store build, or check the M6
+### Owner-approved review-only exception: 2026-09-12
+
+The owner explicitly approved submitting version 0.1.2 build 19 to Apple for
+review while keeping public release manual and blocked until the outstanding
+hardware/lifecycle QA is complete. This exception applies only to Apple build
+`f6f4c461-26c6-4da7-957d-f7ab9ed3f40a`, source
+`0dad553ffd45f1185b2561204254a4ca7daae334`, package SHA-256
+`20654f714021b512ce7ddb5950679848611e6d58b60895e81dd2e3b1a6c9ba1d`.
+It permits App Review submission, not public distribution, Direct publication,
+an automatic-release setting, or a passing QA attestation. Existing incomplete
+receipts and checks must remain unchanged. Apple approval alone does not clear
+the public-release stop below. Future candidates require their own qualification
+or a separate explicit owner decision.
+
+Except for the specific review-only submission authorized above, do not publish
+Direct `latest.json`, submit the App Store build, or check the M6
 QA box in the design spec until the signed candidate matrix is complete. Direct
 ships first. App Store submission may follow only with the exact sandboxed
 capabilities that passed TestFlight.
