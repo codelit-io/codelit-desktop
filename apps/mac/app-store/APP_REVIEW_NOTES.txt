@@ -1,0 +1,19 @@
+Version 0.1.2 build 19 addresses the September 9 Guideline 2.1 engine-availability issue.
+
+Cause: build 17 incorrectly treated our recorded 32 GB test-machine class as an exact runtime allowlist. That prevented local model setup on otherwise eligible Macs. Build 19 includes the correction: model-specific minimum RAM, available disk space, pinned file integrity checks, and a real on-device benchmark determine readiness. It also displays provider-discovery progress, supports retry after discovery failure, and hides providers blocked by the App Store sandbox.
+
+First-time setup:
+1. Use an Apple-silicon Mac running macOS 14 or later, with at least 8 GB unified memory. This build does not support Intel Macs.
+2. Launch Codelit. No sign-in is required. Open Settings > Intelligence > On this Mac.
+3. Under Built-in MLX, install Qwen 3 0.6B - Quick local (334 MB). Internet is required for this initial model-weight download. No account, subscription, API key, terminal, or separate model application is needed.
+4. Keep Codelit open while it verifies the files and runs the device check. Wait for Ready. Resume continues interrupted setup; a failed check remains visible rather than marking the model ready.
+5. Close Settings, open the seeded Codelit bot, leave the engine on Auto, and send: Write one short sentence explaining what a checklist is.
+6. After setup, this model can run offline. Qwen 3 8B is an optional larger download (4.3 GB) requiring at least 16 GB unified memory.
+
+Verification scope: the exact signed build 19 was installed through TestFlight on our 32 GB M1 Pro running macOS 26.6.2. A real Quick local response, preserved conversations after upgrade, provider setup display, and native export-dialog cancellation were observed. Memory-capacity regression tests are not physical testing of every supported Mac.
+
+Earlier fixes remain included: the subtitle is Private AI workspace (Guideline 5.2.5), and native export Save dialogs no longer terminate the app (Guideline 2.1(a)). To review export: Settings > Privacy > Export all local data, save to a chosen destination, repeat to replace the backup, then cancel another Save dialog. Exports omit sign-ins and folder permissions. Selected project access remains read-only.
+
+The App Store build supports local bots, conversations, approved memory, skills, tables, multi-bot handoffs, and user-selected folder reads. It does not include automated website inspection, computer control, background routines, subscription command-line agents, or an updater. It requests neither Accessibility nor Screen Recording permission.
+
+The app is free, needs no Codelit account, contains no tracking SDK or advertising, and has no purchase or external-checkout path. Built-in model prompts and output remain on the Mac. Optional user-owned API providers receive bounded run context only when explicitly selected.
