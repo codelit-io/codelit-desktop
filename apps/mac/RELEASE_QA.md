@@ -209,3 +209,16 @@ Direct `latest.json`, submit the App Store build, or check the M6
 QA box in the design spec until the signed candidate matrix is complete. Direct
 ships first. App Store submission may follow only with the exact sandboxed
 capabilities that passed TestFlight.
+
+### Owner-authorized App Store publication: 2026-09-14
+
+After Apple approved the exact version 0.1.2 build 19 candidate identified
+above, the owner explicitly authorized its public Mac App Store release. The
+listing became publicly available at
+`https://apps.apple.com/us/app/codelit/id6801650460` on September 14, 2026.
+
+This authorization supersedes only the App Store publication restriction for
+that exact candidate. It does not mark incomplete hardware or lifecycle QA as
+passed, authorize a Direct release, or apply to a later build. Preserve the
+existing incomplete receipts and require a new candidate-specific decision for
+every subsequent release.

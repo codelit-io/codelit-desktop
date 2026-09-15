@@ -4,6 +4,21 @@ Codelit Desktop is a local-first AI bot workspace for Apple Silicon Macs. It
 keeps conversations, goals, approved memory, reusable skills, schedules, local
 tables, run events, approvals, and receipts on the user's Mac.
 
+## Download
+
+The official Codelit `0.1.2` release is available free from the
+[Mac App Store](https://apps.apple.com/us/app/codelit/id6801650460). It runs on
+Apple Silicon Macs with macOS 14 or later and at least 8 GB of unified memory.
+No Codelit account or API key is required to start with the built-in on-device
+model.
+
+The Mac App Store build includes local conversations, persistent bots, approved
+memory, reusable skills, local tables, multi-bot handoffs, selected-folder
+reads, conversation search, data export, and private local run history. Apple
+sandbox restrictions mean that build does not include automated website
+inspection, computer control, background routines, or external subscription
+CLIs.
+
 This repository contains only the macOS application and the shared runtime
 modules it needs. The Codelit website, hosted execution service, billing,
 deployment configuration, and cloud backend are not included.
@@ -25,7 +40,7 @@ be installed or executed. Live discovery is review-only until a model passes
 the same release verification. Model weights, signing certificates, provider
 credentials, and Apple credentials are never stored in this repository.
 
-## Requirements
+## Development requirements
 
 - Apple Silicon Mac
 - macOS 14 or later
@@ -86,8 +101,9 @@ not licensed for third-party distributions. Fork maintainers must change those
 identifiers and provide their own signing and update infrastructure. See
 [TRADEMARKS.md](TRADEMARKS.md).
 
-Official downloads and product documentation remain available at
-[codelit.io](https://codelit.io).
+Download the released app from the
+[Mac App Store](https://apps.apple.com/us/app/codelit/id6801650460), or read the
+[Codelit for Mac documentation](https://codelit.io/docs/codelit-for-mac).
 
 ## License
 
