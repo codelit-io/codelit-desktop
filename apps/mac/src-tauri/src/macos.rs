@@ -1005,7 +1005,9 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::{available_panel, write_atomic, write_prepared_atomic, write_quarantined_atomic};
+        use super::{
+            available_panel, write_atomic, write_prepared_atomic, write_quarantined_atomic,
+        };
         use objc2_foundation::{NSString, NSURL};
         use std::ffi::CString;
         use std::fs;
@@ -1034,7 +1036,10 @@ mod platform {
             write_atomic(&url, b"a longer previous backup").expect("first backup");
             write_atomic(&url, b"new backup").expect("replacement backup");
             assert_eq!(fs::read(&path).expect("saved archive"), b"new backup");
-            assert_eq!(fs::read_dir(directory.path()).expect("directory").count(), 1);
+            assert_eq!(
+                fs::read_dir(directory.path()).expect("directory").count(),
+                1
+            );
             assert_eq!(
                 fs::metadata(&path)
                     .expect("export metadata")

@@ -185,14 +185,7 @@ fn probe_model(
         || resources.free_disk_bytes >= model.download_bytes.saturating_mul(2);
 
     if let Err(detail) = ensure_model_memory(model, resources.memory_bytes) {
-        return Ok(model_view(
-            model,
-            "incompatible",
-            None,
-            false,
-            detail,
-            None,
-        ));
+        return Ok(model_view(model, "incompatible", None, false, detail, None));
     }
 
     if !snapshot.is_dir() {
@@ -430,7 +423,9 @@ fn ensure_model_memory(model: &ModelManifestEntry, memory_bytes: u64) -> Result<
     // Physical QA history is evidence, not a hardware allowlist. Every device
     // must still verify model files and pass its own benchmark before use.
     if memory_bytes == 0 {
-        return Err("Codelit could not check this Mac's memory. Restart the app and try again.".into());
+        return Err(
+            "Codelit could not check this Mac's memory. Restart the app and try again.".into(),
+        );
     }
     if memory_bytes < model.minimum_memory_bytes {
         return Err(format!(
@@ -572,9 +567,19 @@ mod tests {
                     free_disk_bytes: 64 * 1024 * 1024 * 1024,
                 };
                 let eligible = resources.memory_bytes >= model.minimum_memory_bytes;
-                assert_eq!(ensure_model_memory(&model, resources.memory_bytes).is_ok(), eligible);
+                assert_eq!(
+                    ensure_model_memory(&model, resources.memory_bytes).is_ok(),
+                    eligible
+                );
                 let view = probe_model(directory.path(), &model, resources).unwrap();
-                assert_eq!(view.status, if eligible { "download-required" } else { "incompatible" });
+                assert_eq!(
+                    view.status,
+                    if eligible {
+                        "download-required"
+                    } else {
+                        "incompatible"
+                    }
+                );
                 assert!(view.benchmark.is_none());
             }
         }
@@ -589,17 +594,39 @@ mod tests {
         let directory = tempdir().unwrap();
         let mut model = manifest_entry("mlx-community/Qwen3-0.6B-4bit").unwrap();
         model.files = vec![ModelFile {
-            path: "model.bin".into(), bytes: 5,
+            path: "model.bin".into(),
+            bytes: 5,
             sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".into(),
         }];
-        let snapshot = cache_root(directory.path(), &model.id).unwrap().join("snapshots").join(&model.revision);
+        let snapshot = cache_root(directory.path(), &model.id)
+            .unwrap()
+            .join("snapshots")
+            .join(&model.revision);
         fs::create_dir_all(&snapshot).unwrap();
-        let resources = MachineResources { memory_bytes: 8 * 1024 * 1024 * 1024, free_disk_bytes: 64 * 1024 * 1024 * 1024 };
-        assert_eq!(probe_model(directory.path(), &model, resources).unwrap().status, "corrupt");
+        let resources = MachineResources {
+            memory_bytes: 8 * 1024 * 1024 * 1024,
+            free_disk_bytes: 64 * 1024 * 1024 * 1024,
+        };
+        assert_eq!(
+            probe_model(directory.path(), &model, resources)
+                .unwrap()
+                .status,
+            "corrupt"
+        );
         fs::write(snapshot.join("model.bin"), b"wrong").unwrap();
-        assert_eq!(probe_model(directory.path(), &model, resources).unwrap().status, "corrupt");
+        assert_eq!(
+            probe_model(directory.path(), &model, resources)
+                .unwrap()
+                .status,
+            "corrupt"
+        );
         fs::write(snapshot.join("model.bin"), b"hello").unwrap();
-        assert_eq!(probe_model(directory.path(), &model, resources).unwrap().status, "benchmark-required");
+        assert_eq!(
+            probe_model(directory.path(), &model, resources)
+                .unwrap()
+                .status,
+            "benchmark-required"
+        );
     }
 
     #[test]
