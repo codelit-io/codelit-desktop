@@ -2213,6 +2213,49 @@ fn project_fingerprint(root: &Path) -> Result<LocalProjectFingerprint, String> {
     })
 }
 
+fn selected_paths(handoff: &str) -> Result<Vec<String>, String> {
+    let selection = handoff
+        .lines()
+        .find_map(|line| {
+            let line = line.trim();
+            line.strip_prefix("FILES:")
+                .or_else(|| line.strip_prefix("FILES="))
+        })
+        .ok_or_else(|| "Select files with FILES: followed by quoted relative paths.".to_string())?
+        .trim();
+    if selection.starts_with('[') {
+        return serde_json::from_str(selection)
+            .map_err(|_| "Selected paths must be a JSON array of relative filenames.".to_string());
+    }
+    let mut paths = Vec::new();
+    let mut path = String::new();
+    let mut quote = None;
+    for character in selection.chars() {
+        if let Some(delimiter) = quote {
+            if character == delimiter {
+                quote = None;
+            } else {
+                path.push(character);
+            }
+        } else if matches!(character, '`' | '\'' | '"') {
+            quote = Some(character);
+        } else if character.is_whitespace() || matches!(character, ',' | ';') {
+            if !path.is_empty() {
+                paths.push(std::mem::take(&mut path));
+            }
+        } else {
+            path.push(character);
+        }
+    }
+    if quote.is_some() {
+        return Err("Close the quote around each selected filename and retry.".into());
+    }
+    if !path.is_empty() {
+        paths.push(path);
+    }
+    Ok(paths)
+}
+
 #[cfg(test)]
 fn selected_file_context(root: &Path, handoff: &str) -> Result<String, String> {
     selected_file_context_with_cancellation(root, handoff, &CancellationToken::default())
@@ -2230,43 +2273,32 @@ fn selected_file_context_with_cancellation(
         .canonicalize()
         .map_err(|_| "The selected project folder is no longer available.".to_string())?;
     let mut selected: Vec<String> = Vec::new();
-    for token in handoff.split(|character: char| {
-        character.is_whitespace()
-            || matches!(character, ',' | ';' | '[' | ']' | '(' | ')' | '{' | '}')
-    }) {
-        let candidate = token
-            .trim_matches(|character| matches!(character, '`' | '\'' | '"' | ':' | '*'))
-            .trim_start_matches("FILES=")
-            .trim_start_matches("FILES:");
-        if candidate.is_empty() || candidate.len() > 240 {
+    for candidate in selected_paths(handoff)? {
+        let relative = Path::new(&candidate);
+        if candidate.is_empty()
+            || candidate.len() > 240
+            || relative.is_absolute()
+            || !safe_text_path(relative)
+        {
+            return Err("Selected files were not read. Choose safe relative paths inside the approved folder; protected files are unavailable.".into());
+        }
+        if selected.contains(&candidate) {
             continue;
         }
-        let relative = Path::new(candidate);
-        if relative.is_absolute()
-            || !safe_text_path(relative)
-            || selected.iter().any(|path| path == candidate)
-        {
-            continue;
+        if selected.len() == 8 {
+            return Err(
+                "Selected files were not read. Select at most eight files per request.".into(),
+            );
         }
         let path = root.join(relative);
-        if !safe_file_without_symlinks(&root, relative) {
-            continue;
-        }
-        let Ok(metadata) = fs::metadata(&path) else {
-            continue;
-        };
-        if !metadata.is_file() {
-            continue;
-        }
-        if metadata.len() > 64 * 1024 {
+        if !safe_file_without_symlinks(&root, relative)
+            || !fs::metadata(&path).is_ok_and(|metadata| metadata.is_file())
+        {
             return Err(format!(
-                "File {candidate} exceeds this reader's 64 KiB limit. Select a smaller text excerpt."
+                "Selected files were not read: {candidate} is missing, inaccessible, or not a regular file. Select it again inside the approved folder."
             ));
         }
-        selected.push(candidate.to_string());
-        if selected.len() == 8 {
-            break;
-        }
+        selected.push(candidate);
     }
     if selected.is_empty() {
         return Err(
@@ -2796,17 +2828,64 @@ mod tests {
         )
         .expect("source");
 
-        let context = selected_file_context(
-            directory.path(),
-            "FILES: `README.md`, `src/app.ts`, `.env`, `../outside.txt`",
-        )
-        .expect("selected context");
+        let context = selected_file_context(directory.path(), "FILES: `README.md`, `src/app.ts`")
+            .expect("selected context");
 
         assert!(context.contains("File README.md"));
         assert!(context.contains("File src/app.ts"));
         assert!(context.contains("export const ready"));
         assert!(!context.contains("SECRET="));
         assert!(!context.contains("outside.txt"));
+    }
+
+    #[test]
+    fn selected_documents_read_quoted_paths_with_spaces() {
+        let directory = tempdir().expect("tempdir");
+        fs::write(directory.path().join("Supplier A.txt"), "First proposal\n").unwrap();
+        fs::write(directory.path().join("Supplier B.md"), "Second proposal\n").unwrap();
+        let context = selected_file_context(
+            directory.path(),
+            "FILES: `Supplier A.txt`, \"Supplier B.md\"\nCompare the proposals.",
+        )
+        .expect("both selected documents");
+        assert!(context.contains("File Supplier A.txt"));
+        assert!(context.contains("File Supplier B.md"));
+    }
+
+    #[test]
+    fn selected_documents_validate_complete_selection_before_reading() {
+        let directory = tempdir().expect("tempdir");
+        fs::write(directory.path().join("Supplier's [A].txt"), "Proposal\n").unwrap();
+        let handoff = format!("FILES: {}", serde_json::json!(["Supplier's [A].txt"]));
+        assert!(
+            selected_file_context(directory.path(), &handoff)
+                .unwrap()
+                .contains("Proposal")
+        );
+        assert!(selected_file_context(directory.path(), "FILES: `unfinished.txt").is_err());
+        let paths = (0..9)
+            .map(|index| {
+                let name = format!("{index}.txt");
+                fs::write(directory.path().join(&name), "fact\n").unwrap();
+                name
+            })
+            .collect::<Vec<_>>();
+        let error = selected_file_context(
+            directory.path(),
+            &format!("FILES: {}", serde_json::json!(paths)),
+        )
+        .unwrap_err();
+        assert!(error.contains("at most eight"));
+    }
+
+    #[test]
+    fn selected_documents_report_missing_path_alongside_valid_path() {
+        let directory = tempdir().expect("tempdir");
+        fs::write(directory.path().join("present.txt"), "Available fact\n").unwrap();
+        let error = selected_file_context(directory.path(), "FILES: present.txt, missing.txt")
+            .expect_err("missing source must not be silently omitted");
+        assert!(error.contains("missing.txt"));
+        assert!(error.contains("not read"));
     }
 
     #[test]
@@ -2924,9 +3003,15 @@ mod tests {
     fn selected_file_read_fails_closed_without_safe_paths() {
         let directory = tempdir().expect("tempdir");
         initialize_repository(directory.path());
-        let error = selected_file_context(directory.path(), "FILES: `.env`, `../outside.txt`")
-            .expect_err("protected selection");
-        assert!(error.contains("did not select any safe repository files"));
+        for handoff in [
+            "FILES: README.md, `.env`",
+            "FILES: README.md, `../outside.txt`",
+            "FILES: README.md, `/tmp/outside.txt`",
+        ] {
+            let error = selected_file_context(directory.path(), handoff)
+                .expect_err("protected selection must not become a successful partial read");
+            assert!(error.contains("not read"));
+        }
     }
 
     #[test]

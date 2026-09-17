@@ -28,6 +28,16 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 
 ## Current task
 
+### Next batch 2026-09-17 (starting at ea6134f)
+
+- [x] Confirm correct branch, prior commits and clean tracked tree; read task, roadmap, README and release/harness contracts. No AGENTS.md found.
+- [x] Reproduce quoted/spaced path and missing-named-source regressions before fixing native selection parsing.
+- [x] Verify bounded selected-path handling without broadening folder access (commit follows).
+- [ ] Wire the smallest native-backed composer source-selection surface; preserve the request on cancellation/errors.
+- [ ] Continue independent continuity and capability discovery work; run full source checks and record exact remaining gates.
+
+Baseline remains eight files / 64 KiB each, approved folder bookmarks, no PDF parser or document picker. Existing untracked task inputs and `.qa-logs/` are not this batch's changes. Renderer budget and physical/model acceptance remain open; no owner decision is needed for independent native work.
+
 Recovery 2026-09-17: confirmed `codex/union-alpha-mac-value` at `3c5f1a5`, preserving `69cc9ca` and the pending 100-line native document diff. Finish bounded TXT/Markdown/CSV source context first; then one renderer-budget investigation, independent native-document work, reviewed continuity, and capability-aware starters. Existing progress is continued, not restarted.
 
 Open gates: renderer bundle budget (prior run failed; exact current measurement pending), actual supported-model prompt corpus, signed App Store sandbox/source opening, 8 GB physical-device memory/cancellation, and observed-user acceptance. No runtime/model/customer outcomes inferred from fixtures.
@@ -35,6 +45,12 @@ Open gates: renderer bundle budget (prior run failed; exact current measurement 
 Inspection: README, RELEASE_QA, HARNESS_RELEASE_QA, package scripts, current diff and native boundary read; no repository AGENTS.md found. Pending draft incorrectly labels CSV physical lines as records, may truncate disclosure, and treats unreadable bytes as a successful context. Correct those before committing. Keep the existing 64 KiB/file and eight-file boundary for this first slice; broader document limits and picker remain separate work.
 
 ## Log
+
+### Next-batch slice 1: explicit selected paths
+
+- Native regression tests first failed for quoted filenames containing spaces and a missing named file beside a valid file. Fixed `tool_runtime.rs` to parse the explicit FILES line with quote-aware tokens or a JSON string array (for lossless native-picker paths), ignoring explanatory lines rather than treating prose as filenames.
+- Validate the whole selection before reading: missing/inaccessible/nonregular sources, protected/traversing/absolute paths, unclosed quotes and more than eight unique files fail with a recovery action, never silently turn a comparison into a successful one-source read. A missing name is identified; no document bytes are returned on that error. Existing protected-file test now expects failure for a mixed unsafe selection rather than silent omission.
+- macOS native fixtures: both regressions observed failing (exit 101), then passing; full native suite 273 passed / 7 ignored before the additional JSON/limit fixture; final focused selection suite 13 passed. Cargo fmt and clippy all-targets `-D warnings` passed. No physical sandbox/model evidence or new parser/cache/permissions. Composer work follows.
 
 - 2026-09-17: docs written; Phase 1 slice 1 started (audit + test-first repair).
 - 2026-09-17: Phase 1 slice 1 committed (69cc9ca). `latestBotOutcome` now takes the workspace receipts and only reports "completed" when the matching receipt body says completed AND has bounded completedTools evidence; assistant text alone yields "answered" (no goal/skill escalation; recovery actions now only for failed/partial/blocked). `buildBotNextActions` gained a CONVERSATIONAL_REQUEST guard so "What can you help me with?" produces no actions. `BotOutcomeActions` passes receipts from the workspace snapshot. Verification: vitest `src/lib/mac-bot-outcomes.test.ts` 11/11 pass under Node 24 (via npx node@24.14.0; local default node is v26.5.0, pinned engines.node=24.x respected); `tsc --noEmit` clean for apps/mac. Environment: repo workspace, macOS host. Limits: renderer-only fixture test; no physical-device or real-model run (no installed model/provider in this environment); no release/QA receipt changed.
