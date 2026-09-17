@@ -104,6 +104,28 @@ describe("Mac bot outcome actions", () => {
     ])).toBeNull();
   });
 
+  it("uses the same evidence validation for inline and persisted receipts", () => {
+    const cases = [
+      { completedTools: [{ toolId: "selected-files-read", toolName: "Selected files" }], status: "completed" },
+      { completedTools: [{ toolId: " ", toolName: "Selected files" }], status: "answered" },
+      { completedTools: [{ toolId: "selected-files-read", toolName: " " }], status: "answered" },
+      { completedTools: [{ toolId: 42, toolName: "Selected files" }], status: "answered" },
+      { completedTools: [null, [], "selected-files-read"], status: "answered" },
+      { completedTools: [], status: "answered" },
+      { completedTools: null, status: "answered" },
+    ];
+    for (const { completedTools, status } of cases) {
+      const body = { status: "completed", details: { completedTools } };
+      const request = { type: "user-message", text: "Read the selected documents" };
+      const inline = { type: "receipt", receipt: body };
+      expect(latestBotOutcome([request, inline])?.status).toBe(status);
+      expect(latestBotOutcome([
+        request,
+        { type: "run", runId: "documents", status: "completed" },
+      ], [{ runId: "documents", body }])?.status).toBe(status);
+    }
+  });
+
   it("turns repeated successful work into a plain automation suggestion", () => {
     const signal = latestBotOutcome([
       { type: "user-message", text: "Inspect https://example.com for broken links" },

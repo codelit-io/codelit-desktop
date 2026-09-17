@@ -131,6 +131,14 @@ function outcomeRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+function hasToolEvidence(details: Record<string, unknown> | null) {
+  return Array.isArray(details?.completedTools) && details.completedTools.some((tool) => {
+    const value = outcomeRecord(tool);
+    return typeof value?.toolId === "string" && value.toolId.trim().length > 0
+      && typeof value.toolName === "string" && value.toolName.trim().length > 0;
+  });
+}
+
 export function latestBotOutcome(blocks: readonly BotThreadBlock[], receipts: readonly BotOutcomeReceipt[] = []): BotOutcomeSignal | null {
   let request = "";
   let status: BotOutcomeSignal["status"] | null = null;
@@ -144,11 +152,7 @@ export function latestBotOutcome(blocks: readonly BotThreadBlock[], receipts: re
     if (block.type === "receipt") {
       const body = outcomeRecord((block as { receipt?: unknown }).receipt);
       const details = outcomeRecord(body?.details);
-      const toolEvidence = Array.isArray(details?.completedTools) && details.completedTools.some((tool) => {
-        const value = outcomeRecord(tool);
-        return typeof value?.toolId === "string" && value.toolId.trim().length > 0
-          && typeof value.toolName === "string" && value.toolName.trim().length > 0;
-      });
+      const toolEvidence = hasToolEvidence(details);
       if (body?.status === "completed" && toolEvidence) status ||= "completed";
       else if (body?.status === "canceled") status ||= "cancelled";
       else if (body?.status === "failed") status ||= "failed";
@@ -158,11 +162,7 @@ export function latestBotOutcome(blocks: readonly BotThreadBlock[], receipts: re
       const receipt = block.runId ? [...receipts].reverse().find((item) => item.runId === block.runId) : undefined;
       const body = outcomeRecord(receipt?.body);
       const details = outcomeRecord(body?.details);
-      const evidence = Array.isArray(details?.completedTools) && details.completedTools.some((tool) => {
-        const value = outcomeRecord(tool);
-        return typeof value?.toolId === "string" && value.toolId.trim().length > 0
-          && typeof value.toolName === "string" && value.toolName.trim().length > 0;
-      });
+      const evidence = hasToolEvidence(details);
       const outcome = details?.taskOutcome;
       if (block.status === "stopped") status = "cancelled";
       else if (block.status === "failed") status = evidence ? "partial" : "failed";
