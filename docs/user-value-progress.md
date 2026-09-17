@@ -28,6 +28,38 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 
 ## Current task
 
+### Review follow-up 2026-09-17 (starting at 009bc4e)
+
+- [x] Confirm branch and preserve prior commits; inspect README, release/harness contracts, picker/read paths and existing tests. No repository AGENTS.md found. Tracked tree initially clean.
+- [x] Reproduce selection lifecycle failures with executable state tests; bind selection to bot, draft and approved folder, including async picker completion.
+- [x] Add visible remove selection, consume only on successful read, preserve retry/cancel intent, invalidate on access/root changes, and keep native authorization authoritative.
+- [x] Audit legacy code-file reads and remove the unused plural non-mac picker stub.
+- [ ] Make one purposeful bounded renderer reduction without changing budgets or checking out baselines.
+- [x] Run focused and full source checks; commit verified slices and continue independent feasible phase work.
+
+Baseline: focused Node 24.14.0 file-intent/runtime tests pass (13 tests), but no picker lifecycle behavior is covered. Inspection confirms global string selection, no consumption/removal and a truthy path bypass of renderer folder readiness. Native scoped bookmark access still gates reads; root identity is not yet carried with picked paths. Current picker performs a local excerpt read, not a model summary despite its generated prompt. Physical sandbox, model quality and UI acceptance remain unverified.
+
+### Review-follow-up slice 1: selection lifecycle (implemented, committed in this batch)
+
+Renderer (`local-file-intent.ts` new reducer; `BotsApp.tsx`):
+- Selections are now `{botId, root, path}` records derived through `documentSelectionReducer` with the active bot and validated folder as the scope; any bot switch, folder change or lost `accessValidated` clears the selection in render and via an effect, so a stale path can never be read for another bot or folder.
+- The picker result is applied only if the scope is unchanged when the async panel returns; prefill targets that bot's own prompt draft and no longer overwrites user text.
+- The composer send path (`sendComposer`) binds the visible selection to that one request via `options.document`; `submit` rejects a document from another bot, revoked access, a changed root, routines and delegations before any run starts, preserving retry intent on failure/cancel and consuming the selection only on a completed run. Successful sends clear the selection and the draft; failed sends keep both.
+- The Document button becomes a visible "Remove document" chip (accessible name includes the filename); clicking removes the selection. `folderReady` no longer treats a stored path as folder access.
+- Picked reads now flow through `readSelectedFiles(..., root)` (JSON lossless handoff + `toolInputs["Selected files"].expectedRoot`) and legacy typed reads use the restored `readLocalProjectFile` bounded path validation.
+
+Native (`tool_runtime.rs`, `lib.rs`, `macos.rs`):
+- `resolve_scoped_tool` carries `expectedRoot` from tool inputs; `execute_in_root` refuses a Selected-files read whose canonical root differs from the approved bookmark root before opening any file ("Select the document again inside the currently approved folder."). Plain FILES/JSON-array handoffs keep working for model/team flows.
+- `choose_workspace_document` command requires `expectedRoot` to match the stored bookmark path and errors with a reselect action otherwise; native authorization remains the sole source of access (renderer never reads bytes).
+- Removed the unused `choose_workspace_documents` non-mac stub (confirmed no references).
+
+Verification on this macOS checkout (Node 24.14.0 via npx pin; Rust stable; CARGO_BUILD_JOBS=2):
+- Vitest 345 passed (36 files), including 5 new reducer lifecycle fixtures and the root-binding handoff test; regression-first evidence: the new suite failed 5 tests (missing reducer/handoff) before implementation.
+- Native cargo test 276 passed / 7 ignored live prerequisites. New `picked_selection_is_rejected_after_the_approved_root_changes` failed first (exit 101: the other root's file was returned), then passed after the canonical-root gate.
+- `tsc --noEmit` clean; clippy `--all-targets -D warnings` clean; `cargo fmt --check` clean.
+- Renderer QA: full suite passed (74 records, exit 0) including the new `auditDocumentLifecycle` journey (fixture-only evidence): pick → remove chip appears with filename; bot switch and return clear it while preserving the draft; canceled pick preserves the draft; failed read keeps selection + draft with the error; successful send consumes selection, clears draft, records exactly one tool read bound to `/Users/qa/Codelit Project`; the read was verified absent on first run (new audit initially failed 5 times against real behavior) and passes now. No physical device, signed candidate, real model, or real sandbox permission was exercised; the fixture mocks `choose_workspace_document` and `run_local_tool_batch`.
+- Renderer bundle gate remains failing and unchanged (entry 501,956/500,000; total 224,253/223,000 gzip; baseline at 009bc4e measured 500,177/223,628): the scoped lifecycle adds ~1.8 KiB entry / ~0.6 KiB gzip. Budget was not raised; the bounded reduction remains open work.
+
 ### Next batch 2026-09-17 (starting at ea6134f)
 
 - [x] Confirm correct branch, prior commits and clean tracked tree; read task, roadmap, README and release/harness contracts. No AGENTS.md found.
