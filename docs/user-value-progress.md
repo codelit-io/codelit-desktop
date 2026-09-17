@@ -49,6 +49,16 @@ Inspection: README, RELEASE_QA, HARNESS_RELEASE_QA, package scripts, current dif
 - Limits: still the existing eight-file/64 KiB reader, folder-based selection and textual citations only; missing named paths alongside valid paths can still be omitted by legacy handoff parsing. Explicit composer document picker, quoted filenames with spaces, structured CSV/PDF parser, source-opening links, extraction identity/cache and 25 MB/10-file limits are not implemented by this slice. Historical conversation excerpts remain stored until conversation deletion. Not release-ready.
 - Follow-up: added an `execute_in_root` integration test proving the real approved "Selected files" tool run emits the cited, untrusted-bounded document context (271 native tests pass).
 
+### Recovery slice 3: reviewed-memory expiry
+
+- Commit `709a1c1`: `bot-prompt.ts` rejects expired or invalid-expiry approved memories at prompt construction (including stale in-memory snapshots). Until-forgotten preferences remain usable. Regression first reproduced the obsolete preference in the generated prompt, then passed after the filter. Combined prompt/outcome tests passed 15/15; Node 24 TypeScript passed. This is prompt-fixture evidence, not a model or deletion-UX acceptance result.
+- Commit `56cf438`: shared evidence validation, 12 outcome fixtures pass; renderer budget remains open. Commits `ad3de09` and `67aa505` contain the native document work and approved-tool integration fixture respectively.
+
+### Recovery slice 4: bounded model context
+
+- Reproduced a prompt fixture where a long first source consumed all 4,200 context characters and silently removed the second source. `bot-prompt.ts` now shares that existing budget across up to ten nonempty source sections, preserves complete lines when shortened, and discloses partial/omitted coverage. Native combined file sections are separated using their generated locator headers (content lines are numbered, so they cannot impersonate those headers). All document content remains untrusted; facts need supplied locators and unknown facts stay unknown.
+- Five prompt fixtures and Node 24 TypeScript pass, including native-shaped combined Markdown/CSV context. This does not add semantic retrieval, structured CSV records, a larger model window, document selection UI, or PDF extraction. No real-model comparison quality claim.
+
 ## Observations / baseline notes
 
 - `apps/mac/src/bot-outcomes.ts:123` (`latestBotOutcome`): scanning backwards, any `assistant-message`, `receipt`, or completed `run` block sets `status = "completed"` even when the user's latest request is a greeting/clarification/chat-only answer; no evidence distinction.
