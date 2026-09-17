@@ -23,7 +23,8 @@ export function buildBotPrompt(
   });
   let remainingMemory = 2_400;
   const boundedMemories = memories.flatMap((memory) => {
-    if (remainingMemory <= 0 || memory.approvalState !== "approved") return [];
+    if (remainingMemory <= 0 || memory.approvalState !== "approved"
+      || (memory.expiresAt !== undefined && !(Date.parse(memory.expiresAt) > Date.now()))) return [];
     const prefix = memory.scope === "workspace" ? "Shared workspace memory" : "Bot memory";
     const value = `${prefix} (${memory.kind}): ${memory.body}`.slice(0, remainingMemory);
     remainingMemory -= value.length;
