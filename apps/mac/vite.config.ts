@@ -18,7 +18,10 @@ export default defineConfig(async () => ({
       output: {
         codeSplitting: {
           // Keep shared React/JSX helpers stable as optional surfaces add hooks.
-          groups: [{ name: "react-runtime", test: /node_modules[\\/]react[\\/]/ }],
+          groups: [
+            { name: "react-runtime", test: /node_modules[\\/]react[\\/]/ },
+            { name: "icons", test: /node_modules[\\/]lucide-react[\\/]/ },
+          ],
         },
       },
     },
