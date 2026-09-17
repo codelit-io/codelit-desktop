@@ -8,6 +8,14 @@ import {
   latestBotOutcome,
 } from "../../apps/mac/src/bot-outcomes";
 
+const completedReceipt = {
+  runId: "run-1",
+  body: {
+    status: "completed",
+    details: { completedTools: [{ toolId: "browser-read", toolName: "Read approved page" }] },
+  },
+};
+
 describe("Mac bot outcome actions", () => {
   it("shows only three starters selected from capabilities that are actually ready", () => {
     expect(buildBotStarterOutcomes({
@@ -56,9 +64,9 @@ describe("Mac bot outcome actions", () => {
     ]);
     const complete = latestCompletedBotRequest([
       { type: "user-message", text: "Inspect https://example.com for broken links" },
-      { type: "run", status: "completed" },
+      { type: "run", status: "completed", runId: "run-1" },
       { type: "assistant-message", text: "The inspection completed." },
-    ]);
+    ], [completedReceipt]);
     expect(incomplete).toBeNull();
     expect(complete).toBe("Inspect https://example.com for broken links");
     expect(buildBotNextActions(complete, { hasProject: false, schedulesAvailable: true })).toEqual([
@@ -70,15 +78,41 @@ describe("Mac bot outcome actions", () => {
     ]);
   });
 
+  it("does not turn a chat-only answer into a completed task", () => {
+    const chatOnly = latestBotOutcome([
+      { type: "user-message", text: "What can you help me with?" },
+      { type: "assistant-message", text: "Hi! I'm Atlas. I can inspect folders, review websites, and track work." },
+    ]);
+    expect(chatOnly?.status).toBe("answered");
+    expect(latestCompletedBotRequest([
+      { type: "user-message", text: "What can you help me with?" },
+      { type: "assistant-message", text: "Here is everything you asked for." },
+    ])).toBeNull();
+    expect(buildBotNextActions("What can you help me with?", { hasProject: false, schedulesAvailable: true })).toEqual([]);
+  });
+
+  it("keeps completed status only for evidence-backed runs and receipts", () => {
+    const evidenceBacked = latestBotOutcome([
+      { type: "user-message", text: "Inspect https://example.com for broken links" },
+      { type: "run", status: "completed", runId: "run-1" },
+      { type: "receipt", artifact: { id: "r1", name: "result" } as never, summary: "Found 2 broken links" },
+    ], [completedReceipt]);
+    expect(evidenceBacked?.status).toBe("completed");
+    expect(latestCompletedBotRequest([
+      { type: "user-message", text: "Inspect https://example.com for broken links" },
+      { type: "assistant-message", text: "I inspected the site and everything looks fine." },
+    ])).toBeNull();
+  });
+
   it("turns repeated successful work into a plain automation suggestion", () => {
     const signal = latestBotOutcome([
       { type: "user-message", text: "Inspect https://example.com for broken links" },
-      { type: "run", status: "completed" },
+      { type: "run", status: "completed", runId: "run-1" },
       { type: "assistant-message", text: "Done" },
       { type: "user-message", text: "Inspect https://example.com for broken links" },
-      { type: "run", status: "completed" },
+      { type: "run", status: "completed", runId: "run-2" },
       { type: "assistant-message", text: "Done again" },
-    ]);
+    ], [{ ...completedReceipt, runId: "run-2" }]);
     expect(signal).toEqual({
       request: "Inspect https://example.com for broken links",
       repeatCount: 2,

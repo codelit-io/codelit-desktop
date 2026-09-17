@@ -7613,6 +7613,7 @@ export default function BotsApp() {
               <Suspense fallback={null}>
                 <BotOutcomeActions
                   blocks={workspace.blocks}
+                  receipts={workspace.receipts}
                   capabilities={outcomeCapabilities}
                   disabled={!canStartBotExecution(executionStates, bot.id)}
                   mode="next"

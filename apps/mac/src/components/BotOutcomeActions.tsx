@@ -1,5 +1,6 @@
 import { ArrowRight, MessageSquareText, Sparkles } from "lucide-react";
 import type { ThreadBlock } from "@/lib/workspace-thread";
+import type { LocalReceipt } from "@/lib/local-desktop-workspace";
 import {
   buildBotNextActions,
   buildBotRecoveryActions,
@@ -14,6 +15,7 @@ interface BotOutcomeActionsProps {
   mode: "starter" | "next";
   onSubmit: (prompt: string) => void;
   blocks?: readonly ThreadBlock[];
+  receipts?: readonly LocalReceipt[];
 }
 
 export default function BotOutcomeActions({
@@ -22,8 +24,9 @@ export default function BotOutcomeActions({
   mode,
   onSubmit,
   blocks = [],
+  receipts = [],
 }: BotOutcomeActionsProps) {
-  const latestOutcome = mode === "next" ? latestBotOutcome(blocks) : null;
+  const latestOutcome = mode === "next" ? latestBotOutcome(blocks, receipts) : null;
   const actions = mode === "starter"
     ? buildBotStarterOutcomes(capabilities)
     : latestOutcome?.status === "completed"

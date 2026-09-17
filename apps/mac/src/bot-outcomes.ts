@@ -11,12 +11,18 @@ interface BotThreadBlock {
   type: string;
   text?: string;
   status?: string;
+  runId?: string;
+}
+
+interface BotOutcomeReceipt {
+  runId: string;
+  body: unknown;
 }
 
 export interface BotOutcomeSignal {
   request: string;
   repeatCount: number;
-  status: "completed" | "failed" | "paused";
+  status: "answered" | "completed" | "partial" | "blocked" | "cancelled" | "failed" | "paused";
 }
 
 export interface BotOutcomeAction {
@@ -28,6 +34,7 @@ export interface BotOutcomeAction {
 const MAX_ACTIONS = 3;
 const MAX_REQUEST_CHARS = 1_200;
 const CONTROL_REQUEST = /^(?:every\s+|daily\b|when(?:ever)?\s+(?:this|the)\s+(?:project|folder|repository|repo)\s+changes?|watch\s+(?:this|the)\s+(?:project|folder|repository|repo)\b|set\s+(?:your\s+|the\s+)?goal\b|teach\s+|remember\b|what\s+do\s+you\s+know|(?:show|list|open|export)\s+.+?(?:routines?|skills?|memor(?:y|ies)|tables?|connected tools?)\b|(?:create|make)\s+(?:a\s+)?(?:local\s+)?table\b|(?:ask|have)\s+(?:the\s+)?team\b)/i;
+const CONVERSATIONAL_REQUEST = /^(?:hi|hello|hey|thanks|thank you|what can you|what do you|who are you|how do (?:you|I)|can you)\b/i;
 
 function boundedRequest(value: string) {
   return value.replace(/\s+/g, " ").trim().slice(0, MAX_REQUEST_CHARS).trim();
@@ -115,12 +122,16 @@ export function buildBotStarterOutcomes(capabilities: BotOutcomeCapabilities): B
   return actions.slice(0, MAX_ACTIONS);
 }
 
-export function latestCompletedBotRequest(blocks: readonly BotThreadBlock[]) {
-  const signal = latestBotOutcome(blocks);
+export function latestCompletedBotRequest(blocks: readonly BotThreadBlock[], receipts: readonly BotOutcomeReceipt[] = []) {
+  const signal = latestBotOutcome(blocks, receipts);
   return signal?.status === "completed" ? signal.request : null;
 }
 
-export function latestBotOutcome(blocks: readonly BotThreadBlock[]): BotOutcomeSignal | null {
+function outcomeRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function latestBotOutcome(blocks: readonly BotThreadBlock[], receipts: readonly BotOutcomeReceipt[] = []): BotOutcomeSignal | null {
   let request = "";
   let status: BotOutcomeSignal["status"] | null = null;
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
@@ -129,13 +140,40 @@ export function latestBotOutcome(blocks: readonly BotThreadBlock[]): BotOutcomeS
       request = boundedRequest(block.text || "");
       break;
     }
-    if (block.type === "assistant-message" || block.type === "receipt" || (block.type === "run" && block.status === "completed")) {
-      status ||= "completed";
+    if (block.type === "assistant-message") status ||= "answered";
+    if (block.type === "receipt") {
+      const body = outcomeRecord((block as { receipt?: unknown }).receipt);
+      const details = outcomeRecord(body?.details);
+      const toolEvidence = Array.isArray(details?.completedTools) && details.completedTools.some((tool) => {
+        const value = outcomeRecord(tool);
+        return typeof value?.toolId === "string" && value.toolId.trim().length > 0
+          && typeof value.toolName === "string" && value.toolName.trim().length > 0;
+      });
+      if (body?.status === "completed" && toolEvidence) status ||= "completed";
+      else if (body?.status === "canceled") status ||= "cancelled";
+      else if (body?.status === "failed") status ||= "failed";
+      else status ||= "answered";
     }
-    if (block.type === "error" || (block.type === "run" && ["failed", "stopped"].includes(block.status || ""))) {
-      status = "failed";
+    if (block.type === "run") {
+      const receipt = block.runId ? [...receipts].reverse().find((item) => item.runId === block.runId) : undefined;
+      const body = outcomeRecord(receipt?.body);
+      const details = outcomeRecord(body?.details);
+      const evidence = Array.isArray(details?.completedTools) && details.completedTools.some((tool) => {
+        const value = outcomeRecord(tool);
+        return typeof value?.toolId === "string" && value.toolId.trim().length > 0
+          && typeof value.toolName === "string" && value.toolName.trim().length > 0;
+      });
+      const outcome = details?.taskOutcome;
+      if (block.status === "stopped") status = "cancelled";
+      else if (block.status === "failed") status = evidence ? "partial" : "failed";
+      else if (["paused", "approval-required"].includes(block.status || "")) status = "paused";
+      else if (block.status === "completed" && (!status || status === "answered")) {
+        status = outcome === "blocked" ? (evidence ? "partial" : "blocked")
+          : body?.status === "completed" && evidence ? "completed" : "answered";
+      }
     }
-    if (block.type === "run" && ["paused", "approval-required"].includes(block.status || "")) {
+    if (block.type === "error") status = "failed";
+    if (block.type === "question" || (block.type === "approval" && ["waiting", "held"].includes(block.status || ""))) {
       status = "paused";
     }
   }
@@ -153,7 +191,7 @@ export function buildBotNextActions(
   repeatCount = 1,
 ): BotOutcomeAction[] {
   const request = boundedRequest(requestValue || "");
-  if (!request || request.length < 12 || CONTROL_REQUEST.test(request)) return [];
+  if (!request || request.length < 12 || CONTROL_REQUEST.test(request) || CONVERSATIONAL_REQUEST.test(request)) return [];
   const actions: BotOutcomeAction[] = [];
   if (capabilities.schedulesAvailable && hasWebsite(request)) {
     actions.push({
@@ -195,7 +233,7 @@ export function buildBotNextActions(
 }
 
 export function buildBotRecoveryActions(signal: BotOutcomeSignal | null): BotOutcomeAction[] {
-  if (!signal || signal.status === "completed" || CONTROL_REQUEST.test(signal.request)) return [];
+  if (!signal || ["completed", "answered", "cancelled"].includes(signal.status) || CONTROL_REQUEST.test(signal.request)) return [];
   const request = boundedRequest(signal.request);
   if (!request) return [];
   return [
