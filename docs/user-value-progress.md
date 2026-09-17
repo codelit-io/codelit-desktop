@@ -47,6 +47,7 @@ Inspection: README, RELEASE_QA, HARNESS_RELEASE_QA, package scripts, current dif
 - Verification on this macOS development checkout: Node 24.14.0 `npm test` passed 334 tests/36 files; native default-profile `cargo test` passed 270, ignored 7 live prerequisites; `cargo clippy --all-targets -- -D warnings` and `cargo fmt -- --check` passed. No real model, sandbox permission, source-opening UI, or customer acceptance claimed.
 - `npm run desktop:check` reproduced a failure: total JavaScript 223,199 gzip bytes against unchanged 223,000 budget. TypeScript/build succeeded, chained native tests were skipped by that command; native tests were run separately. Prior logged 223,015 is not the current measurement. One focused deduplication investigation remains; do not switch branches/stash to compare bundles.
 - Limits: still the existing eight-file/64 KiB reader, folder-based selection and textual citations only; missing named paths alongside valid paths can still be omitted by legacy handoff parsing. Explicit composer document picker, quoted filenames with spaces, structured CSV/PDF parser, source-opening links, extraction identity/cache and 25 MB/10-file limits are not implemented by this slice. Historical conversation excerpts remain stored until conversation deletion. Not release-ready.
+- Follow-up: added an `execute_in_root` integration test proving the real approved "Selected files" tool run emits the cited, untrusted-bounded document context (271 native tests pass).
 
 ## Observations / baseline notes
 
