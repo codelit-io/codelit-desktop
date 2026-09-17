@@ -34,7 +34,7 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 - [x] Reproduce quoted/spaced path and missing-named-source regressions before fixing native selection parsing.
 - [x] Verify bounded selected-path handling without broadening folder access (commit follows).
 - [x] Wire the smallest native-backed composer source-selection surface; preserve the request on cancellation/errors.
-- [ ] Continue independent continuity and capability discovery work; run full source checks and record exact remaining gates.
+- [x] Continue independent continuity and capability discovery work; run full source checks and record exact remaining gates.
 
 Baseline remains eight files / 64 KiB each, approved folder bookmarks, no PDF parser or document picker. Existing untracked task inputs and `.qa-logs/` are not this batch's changes. Renderer budget and physical/model acceptance remain open; no owner decision is needed for independent native work.
 
@@ -43,6 +43,17 @@ Baseline remains eight files / 64 KiB each, approved folder bookmarks, no PDF pa
 - Added `choose_workspace_document` native command: NSOpenPanel scoped to the approved folder bookmark, files only, one file, validates path/extension/size via `selected_document_path` (TXT/MD/CSV, ≤64 KiB, no symlinks/protected names/traversal). Returns the relative path; no bytes are read at pick time.
 - `BotsApp.tsx` adds a composer "Document" capability button (only when folder access is validated), prefilling `Summarize <name> with cited line numbers.` if the composer is empty; submission routes the picked path through the new `readSelectedFiles` JSON selection so spaces/quotes survive intact.
 - Verification on this checkout: Node 24 tsc clean, vitest 339 passed (36 files) including a new JSON-selection handoff test; native 275 passed / 7 ignored; cargo fmt and clippy `-D warnings` clean. Measured renderer gate: entry 500,177 bytes (over 500,000 by 177) and total 223,456 gzip (over 223,000 by 456); clean baseline at `b231a5d` measured entry under budget and total 223,277 gzip (249 over). The picker adds ~177 entry bytes / ~179 gzip over that failing baseline; budget remains unchanged and failing, recorded as an open gate. No physical device, signed candidate, or real-model run.
+
+## Final status 2026-09-17 (next-batch session end)
+
+Commits this batch (branch `codex/union-alpha-mac-value`, starting at `ea6134f`): `b231a5d` (validate complete selected paths), `1581508` (sandboxed composer document selection). Final verification on the committed tree, Node 24.14.0 / Rust stable, this macOS checkout: native `cargo test` 275 passed / 7 ignored live prerequisites; `cargo fmt -- --check` and `cargo clippy --all-targets -- -D warnings` clean; vitest 339 passed (36 files); `tsc --noEmit` clean; renderer budget gate fails by measurement (entry 500,177/500,000; total 223,456/223,000 gzip) and was never weakened or bypassed.
+
+- Completed: the task file's named next slice — quoted/spaced filenames read correctly and a missing named file now fails the read with an explicit recovery action instead of silent omission (`b231a5d`, regression-first with exit 101 evidence), plus the smallest sandbox-backed composer selection surface with JSON lossless handoff and request-preserving cancellation (`1581508`).
+- Open gate (unchanged policy): renderer bundle budget — baseline was already 249 gzip bytes over before this batch; the picker adds ~177 entry / ~179 gzip bytes. A scoped functional reduction is possible follow-up work, but no further repeated comparison was made this session, and the budget was not raised.
+- Blocked (recorded, not closed here): exact signed App Store candidate sandbox/source-opening checks, 8 GB physical-device document task, real supported-model 30-prompt corpus, provider/live probes (7 ignored native tests), observed-user acceptance. Web phases 3-4 remain the separate web agent's scope.
+- Phase 3 (Mac continuity) next independent steps: structured CSV record parsing and memory-preference reuse UX; deletion already removes memory rows transactionally (`storage.rs` `delete_local_bot_memories` events verified by existing fixtures) and prompt filtering by expiry landed earlier (`709a1c1`).
+- Not release-ready; v0.1.2 tag and release receipts untouched. Untracked `.qa-logs/` and the two task input documents remain uncommitted.
+
 
 
 Recovery 2026-09-17: confirmed `codex/union-alpha-mac-value` at `3c5f1a5`, preserving `69cc9ca` and the pending 100-line native document diff. Finish bounded TXT/Markdown/CSV source context first; then one renderer-budget investigation, independent native-document work, reviewed continuity, and capability-aware starters. Existing progress is continued, not restarted.
