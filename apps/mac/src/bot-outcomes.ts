@@ -34,7 +34,13 @@ export interface BotOutcomeAction {
 const MAX_ACTIONS = 3;
 const MAX_REQUEST_CHARS = 1_200;
 const CONTROL_REQUEST = /^(?:every\s+|daily\b|when(?:ever)?\s+(?:this|the)\s+(?:project|folder|repository|repo)\s+changes?|watch\s+(?:this|the)\s+(?:project|folder|repository|repo)\b|set\s+(?:your\s+|the\s+)?goal\b|teach\s+|remember\b|what\s+do\s+you\s+know|(?:show|list|open|export)\s+.+?(?:routines?|skills?|memor(?:y|ies)|tables?|connected tools?)\b|(?:create|make)\s+(?:a\s+)?(?:local\s+)?table\b|(?:ask|have)\s+(?:the\s+)?team\b)/i;
-const CONVERSATIONAL_REQUEST = /^(?:hi|hello|hey|thanks|thank you|what can you|what do you|who are you|how do (?:you|I)|can you)\b/i;
+function conversationalRequest(value: string) {
+  const text = value.toLowerCase().replace(/[.!?,;:]+/g, " ").replace(/\s+/g, " ").trim();
+  const rest = text.replace(/^(?:hi|hello|hey|thanks|thank you)\b\s*/, "");
+  if (rest !== text && /^(?:|there|again|everyone|all|folks|that helped|that helps|a lot|so much)$/.test(rest)) return true;
+  return /^(?:what can you (?:do|help me with)|what do you do|who are you|can you help(?: me)?)$/.test(rest)
+    || /^how (?:do|can) (?:i|you)\b/.test(rest);
+}
 
 function boundedRequest(value: string) {
   return value.replace(/\s+/g, " ").trim().slice(0, MAX_REQUEST_CHARS).trim();
@@ -191,7 +197,7 @@ export function buildBotNextActions(
   repeatCount = 1,
 ): BotOutcomeAction[] {
   const request = boundedRequest(requestValue || "");
-  if (!request || request.length < 12 || CONTROL_REQUEST.test(request) || CONVERSATIONAL_REQUEST.test(request)) return [];
+  if (!request || request.length < 12 || CONTROL_REQUEST.test(request) || conversationalRequest(request)) return [];
   const actions: BotOutcomeAction[] = [];
   if (capabilities.schedulesAvailable && hasWebsite(request)) {
     actions.push({

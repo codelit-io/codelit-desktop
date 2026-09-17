@@ -28,6 +28,16 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 
 ## Current task
 
+### Continuation 2026-09-17 (starting at 9a9a838)
+
+- [x] Inspect branch, pending classifier/test, README and release/harness contracts; preserve prior selection evidence and untracked task/log inputs. No AGENTS.md found.
+- [x] Reproduce pending `thanks, that helped` regression: Node 24.14.0 Vitest exit 1 (4 passed / 1 failed); incorrectly proposes goal and skill.
+- [x] Replace complex greeting regex with bounded classification; test actionable can-you and greeting-plus-task requests. Node 24.14.0: 25 focused outcome tests pass and `tsc --noEmit` passes. Corrected one overstrict new assertion: skill-name prompts intentionally do not embed the full request. Classifier strips a greeting then matches bounded acknowledgements/capability questions; can-you task requests retain actions. This is renderer logic evidence only, not model quality.
+- [ ] One purposeful renderer optimization, unchanged limits, no baseline checkout comparisons.
+- [ ] Continue feasible document/continuity/discovery slices, then full checks and precise gate report.
+
+Baseline remains partial document MVP (single picker, eight files/64 KiB native boundary; no PDF, cache or source-opening UI). Physical sandbox, supported-model corpus, device and user acceptance remain unverified. Existing lifecycle fixture evidence above/below is preserved, not rerun evidence.
+
 ### Review follow-up 2026-09-17 (starting at 009bc4e)
 
 - [x] Confirm branch and preserve prior commits; inspect README, release/harness contracts, picker/read paths and existing tests. No repository AGENTS.md found. Tracked tree initially clean.
