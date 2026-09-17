@@ -1209,10 +1209,6 @@ mod platform {
         Err("Local folder permissions are available only on macOS.".into())
     }
 
-    pub fn choose_workspace_documents(_bookmark: &[u8]) -> Result<Option<Vec<String>>, String> {
-        Err("Document selection is available only on macOS.".into())
-    }
-
     pub fn choose_workspace_document(_bookmark: &[u8]) -> Result<Option<String>, String> {
         Err("Document selection is available only on macOS.".into())
     }

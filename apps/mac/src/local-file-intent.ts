@@ -1,3 +1,26 @@
+export type DocumentScope = { botId: string | null; root: string | null };
+export type DocumentSelection = { botId: string; root: string; path: string };
+export type DocumentSelectionAction =
+  | { type: "scope" | "remove" }
+  | { type: "picked"; scope: DocumentScope; path: string | null }
+  | { type: "finished"; selection: DocumentSelection; success: boolean };
+
+export function documentSelectionReducer(
+  current: DocumentSelection | null,
+  action: DocumentSelectionAction,
+  scope: DocumentScope,
+): DocumentSelection | null {
+  if (!scope.botId || !scope.root) return null;
+  if (current?.botId !== scope.botId || current.root !== scope.root) current = null;
+  if (action.type === "remove") return null;
+  if (action.type === "picked" && action.path
+    && action.scope.botId === scope.botId && action.scope.root === scope.root) {
+    return { botId: scope.botId, root: scope.root, path: action.path };
+  }
+  if (action.type === "finished" && action.success && current === action.selection) return null;
+  return current;
+}
+
 export type LocalFileIntent =
   | { kind: "list-folder"; purpose: "desktop" | "project" }
   | { kind: "read-project-file"; path: string }

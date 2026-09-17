@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { readLocalProjectFile, readSelectedFiles } from "../../apps/mac/src/runtime";
+import { readLocalProjectFile, readSelectedFiles, chooseWorkspaceDocument } from "../../apps/mac/src/runtime";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -46,6 +46,19 @@ describe("Explicit Mac project-file reads", () => {
     await expect(readLocalProjectFile("file-qa", "acceptance.txt", () => {})).rejects.toThrow("not available");
   });
 
+  it("binds a picked read to the approved root instead of whichever folder is current later", async () => {
+    await readSelectedFiles("picked", 'FILES: ["src/app.ts"]', () => {}, "/approved/a");
+    expect(invoke).toHaveBeenCalledWith("run_local_tool_batch", {
+      request: {
+        runId: "picked",
+        tools: ["Selected files"],
+        handoff: 'FILES: ["src/app.ts"]',
+        toolInputs: { "Selected files": { expectedRoot: "/approved/a" } },
+      },
+      onEvent: expect.anything(),
+    });
+  });
+
   it("passes a picked document as a lossless JSON selection", async () => {
     const handoff = `FILES: ${JSON.stringify(["Supplier's A.txt"])}`;
     vi.mocked(invoke).mockResolvedValue({
@@ -64,5 +77,10 @@ describe("Explicit Mac project-file reads", () => {
       },
       onEvent: expect.anything(),
     });
+  });
+
+  it("requests the native picker only for the currently approved root", async () => {
+    await chooseWorkspaceDocument("/approved/a");
+    expect(invoke).toHaveBeenCalledWith("choose_workspace_document", { expectedRoot: "/approved/a" });
   });
 });

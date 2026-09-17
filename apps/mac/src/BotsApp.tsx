@@ -114,6 +114,9 @@ import {
 } from "./bot-skills";
 import { computerPlannerPrompt, matchComputerApp, parseComputerPlan } from "./computer-use-plan";
 import {
+  documentSelectionReducer,
+  type DocumentSelection,
+  type DocumentSelectionAction,
   localConversationReply,
   parseLocalFileIntent,
   selectedFolderMatchesPurpose,
@@ -251,6 +254,7 @@ import {
   providerRunProvenance,
   readLocalProjectFingerprint,
   readLocalFolderListing,
+  readLocalProjectFile,
   readSelectedFiles,
   readLocalBrowserContext,
   releaseQuarantinedBrowserDownload,
@@ -431,6 +435,7 @@ interface BotTaskOutcome {
 }
 
 interface BotTaskOptions {
+  document?: DocumentSelection;
   bot?: LocalBotRecord;
   workspace?: LocalBotsSnapshot["workspace"];
   memories?: BotMemory[];
@@ -915,7 +920,7 @@ export default function BotsApp() {
   const [globalNotice, setGlobalNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [choosingFolder, setChoosingFolder] = useState(false);
-  const [pickedDocument, setPickedDocument] = useState<string | null>(null);
+  const [documentSelection, setDocumentSelection] = useState<DocumentSelection | null>(null);
   const [exporting, setExporting] = useState(false);
   const [deleteWorkspaceOpen, setDeleteWorkspaceOpen] = useState(false);
   const [deleteWorkspaceConfirmation, setDeleteWorkspaceConfirmation] = useState("");
@@ -1009,6 +1014,22 @@ export default function BotsApp() {
   const catalogReady = catalog !== null;
   const activeBotId = catalog?.activeBot.id || null;
   activeBotIdRef.current = activeBotId;
+  const documentRoot = workspace?.workspaceFolder?.accessValidated ? workspace.workspaceFolder.path : null;
+  const documentScopeRef = useRef({ botId: activeBotId, root: documentRoot });
+  if (documentScopeRef.current.botId !== activeBotId || documentScopeRef.current.root !== documentRoot) {
+    documentScopeRef.current = { botId: activeBotId, root: documentRoot };
+  }
+  const updateDocumentSelection = (action: DocumentSelectionAction) => {
+    setDocumentSelection((current) => documentSelectionReducer(current, action, documentScopeRef.current));
+  };
+  const pickedDocument = documentSelectionReducer(documentSelection, { type: "scope" }, documentScopeRef.current);
+  const removeDocumentSelection = () => {
+    updateDocumentSelection({ type: "remove" });
+    composerRef.current?.focus();
+  };
+  useEffect(() => {
+    setDocumentSelection((current) => documentSelectionReducer(current, { type: "scope" }, documentScopeRef.current));
+  }, [activeBotId, documentRoot]);
   const activeGroupMembers = groupOwnerBotId === activeBotId ? groupMembers : [];
   const execution = bot ? botExecutionState(executionStates, bot.id) : null;
   const runState = execution?.runState || "idle";
@@ -1750,6 +1771,7 @@ export default function BotsApp() {
   const promptLocalFileIntent = isNativeRuntime() ? parseLocalFileIntent(prompt) : null;
   const composerCanRun = Boolean(
     engine
+    || pickedDocument
     || promptDelegationIntent
     || promptDataIntent
     || promptControlIntent
@@ -2170,17 +2192,18 @@ export default function BotsApp() {
   };
 
   const pickDocument = async () => {
-    if (choosingFolder || hasAnyActiveRun) return;
+    if (choosingFolder || hasAnyActiveRun || !documentRoot || !activeBotId) return;
+    const scope = documentScopeRef.current;
     setChoosingFolder(true);
     setGlobalError(null);
     try {
-      const document = await chooseWorkspaceDocument();
-      if (document) {
-        setPickedDocument(document);
-        if (!prompt.trim()) {
-          setPrompt(`Summarize ${document} with cited line numbers.`);
-        }
-        setGlobalNotice(`Selected ${document}. Contents are read when you send the request.`);
+      const document = await chooseWorkspaceDocument(documentRoot);
+      if (document && documentScopeRef.current === scope) {
+        updateDocumentSelection({ type: "picked", scope, path: document });
+        setPromptsByBotId((current) => ({
+          ...current,
+          [activeBotId]: current[activeBotId]?.trim() ? current[activeBotId] : `Read ${document} with cited line numbers.`,
+        }));
         composerRef.current?.focus();
       }
     } catch (reason) {
@@ -5448,6 +5471,12 @@ export default function BotsApp() {
     }
     const botId = runBot.id;
     const threadId = runBot.threadId;
+    const runDocument = options.document;
+    if (runDocument && (options.routine || options.delegation
+      || runDocument.botId !== botId || !runWorkspace.workspaceFolder?.accessValidated
+      || runDocument.root !== runWorkspace.workspaceFolder.path)) {
+      return { status: "paused", detail: "Select the document again in this bot's approved folder." };
+    }
     if (options.appendUser !== false && autoStartBotId === botId) {
       autoStartedBots.current.add(botId);
       setAutoStartBotId(null);
@@ -5478,7 +5507,7 @@ export default function BotsApp() {
       return { status: "paused", detail: "This bot already has an active run." };
     }
     let localFileIntent = null as ReturnType<typeof parseLocalFileIntent>;
-    if (!options.routine && !options.delegation) {
+    if (!runDocument && !options.routine && !options.delegation) {
       const teachingRequest = parseBrowserTeachingRequest(submitted);
       if (teachingRequest) {
         if (!browserReadAvailable) {
@@ -5604,9 +5633,8 @@ export default function BotsApp() {
         const purpose = localFileIntent.kind === "list-folder"
           ? localFileIntent.purpose
           : "project";
-        const folderReady = pickedDocument
-          || (runWorkspace.workspaceFolder?.accessValidated
-          && selectedFolderMatchesPurpose(runWorkspace.workspaceFolder.path, purpose));
+        const folderReady = runWorkspace.workspaceFolder?.accessValidated
+          && selectedFolderMatchesPurpose(runWorkspace.workspaceFolder.path, purpose);
         if (!folderReady) {
           setChoosingFolder(true);
           setPromptsByBotId((current) => ({ ...current, [botId]: "" }));
@@ -5644,9 +5672,9 @@ export default function BotsApp() {
         }
       }
     }
-    const projectFile = pickedDocument
+    const projectFile = runDocument?.path
       || (localFileIntent?.kind === "read-project-file" ? localFileIntent.path : null);
-    const localReadOnly = localFileIntent?.kind === "list-folder"
+    const localReadOnly = Boolean(runDocument) || localFileIntent?.kind === "list-folder"
       || Boolean(projectFile && parseBotBrowserTarget(submitted).kind === "none");
     const selectedEngine: IntelligenceSelection | null = localReadOnly
       ? { provider: "codelit", model: "filesystem-v1" }
@@ -5800,9 +5828,12 @@ export default function BotsApp() {
         const onRunEvent = (event: ProviderRunEvent) => {
           consumeRunEvent(botId, event, events);
         };
-        const listing = projectFile
-          ? await readSelectedFiles(runId, `FILES: ${JSON.stringify([projectFile])}`, onRunEvent)
-          : await readLocalFolderListing(runId, onRunEvent);
+        const listing = runDocument
+          ? await readSelectedFiles(runId, `FILES: ${JSON.stringify([runDocument.path])}`, onRunEvent, runDocument.root)
+          : projectFile
+            ? await readLocalProjectFile(runId, projectFile, onRunEvent)
+            : await readLocalFolderListing(runId, onRunEvent);
+        if (canceledRunIds.current.has(runId)) throw new Error("Run canceled by user.");
         if (listing.status !== "completed" || !listing.context[0]) {
           throw new Error(events.at(-1)?.message || "Codelit could not read the selected files.");
         }
@@ -6360,6 +6391,20 @@ export default function BotsApp() {
         }
         updateExecutionStates((current) => finishBotExecution(current, botId, runId));
         canceledRunIds.current.delete(runId);
+      }
+    }
+  };
+
+  const sendComposer = async () => {
+    if (choosingFolder) return;
+    const selection = documentSelectionReducer(documentSelection, { type: "scope" }, documentScopeRef.current);
+    const request = prompt;
+    const owner = activeBotId;
+    const outcome = await submit(request, selection ? { document: selection } : {});
+    if (selection) {
+      updateDocumentSelection({ type: "finished", selection, success: outcome.status === "completed" });
+      if (outcome.status !== "completed" && owner) {
+        setPromptsByBotId((current) => ({ ...current, [owner]: current[owner] || request }));
       }
     }
   };
@@ -7714,7 +7759,7 @@ export default function BotsApp() {
                 }
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  void submit();
+                  void sendComposer();
                 }
               }}
               placeholder={browserTeaching
@@ -7745,12 +7790,12 @@ export default function BotsApp() {
                 <button
                   type="button"
                   className="composer-capability composer-capability-button"
-                  onClick={() => void pickDocument()}
-                  title="Choose a text document in the connected folder"
-                  aria-label="Choose document"
+                  onClick={pickedDocument ? removeDocumentSelection : () => void pickDocument()}
+                  title={pickedDocument ? `${pickedDocument.root}/${pickedDocument.path}` : "Choose a text document in the connected folder"}
+                  aria-label={pickedDocument ? `Remove selected document ${pickedDocument.path}` : "Choose document"}
                   disabled={hasAnyActiveRun || choosingFolder}
                 >
-                  <FileText size={14} /> Document
+                  <FileText size={14} /> {pickedDocument ? "Remove document" : "Document"}
                 </button>
               )}
               {catalog.bots.length > 1 && (
@@ -7802,7 +7847,7 @@ export default function BotsApp() {
               </button>
               <button
                 className="bots-send-button"
-                onClick={() => void submit()}
+                onClick={() => void sendComposer()}
                 disabled={Boolean(browserTeaching || browserSkillRun) || !prompt.trim() || !canStartBotExecution(executionStates, bot.id) || !composerCanRun}
                 aria-label="Send"
               >

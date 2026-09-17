@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import axe from "axe-core";
 import { chromium } from "playwright";
+import { expect } from "@playwright/test";
 import {
   rendererQaMatrices as matrices,
   rendererQaSurfaces as surfaces,
@@ -71,6 +72,7 @@ function installParallelBotTauriFixture(fixtureInput) {
   const packagedSkillManifests = Array.isArray(fixtureInput)
     ? fixtureInput
     : fixtureInput.packagedSkillManifests;
+  const documentQa = !Array.isArray(fixtureInput) && fixtureInput.documentQa === true;
   const enableMcp = !Array.isArray(fixtureInput) && fixtureInput.enableMcp === true;
   const providerDiscoveryQa = !Array.isArray(fixtureInput) && fixtureInput.providerDiscoveryQa === true;
   if (providerDiscoveryQa) window.__CODELIT_PROVIDER_QA__ = {};
@@ -80,6 +82,9 @@ function installParallelBotTauriFixture(fixtureInput) {
   const runOwners = new Map();
   const providerRuns = new Map();
   const cancelCalls = [];
+  const documentReads = [];
+  let nextDocument = "Supplier's A.txt";
+  let documentFailure = false;
   const approvalDecisions = [];
   const profileUpdates = [];
   const schedules = [];
@@ -664,6 +669,7 @@ function installParallelBotTauriFixture(fixtureInput) {
       activeBotId = id;
       return catalog();
     },
+    choose_workspace_document: () => nextDocument,
     choose_workspace_folder: () => {
       const workspace = findWorkspace(findBot(activeBotId).threadId);
       workspace.workspaceFolder = {
@@ -1372,6 +1378,16 @@ function installParallelBotTauriFixture(fixtureInput) {
       return null;
     },
     run_local_tool_batch: ({ request }) => {
+      if (documentQa && request.tools?.length === 1 && request.tools[0] === "Selected files") {
+        documentReads.push(clone(request));
+        if (documentFailure) throw new Error("Document read canceled. Retry the selected document.");
+        return {
+          runId: request.runId, status: "completed",
+          context: ["File Supplier's A.txt (1 lines total):\n    1 | Fixture document fact"],
+          completedTools: [{ toolId: "selected-files-read", toolName: "Selected files" }],
+          failure: null, browserProofs: [],
+        };
+      }
       const mcpReference = request.tools?.length === 1 && request.tools[0]?.startsWith("mcp::")
         ? request.tools[0]
         : null;
@@ -1755,6 +1771,10 @@ function installParallelBotTauriFixture(fixtureInput) {
   };
 
   window.__CODELIT_PARALLEL_QA__ = {
+    documentState(path, failure = false) {
+      nextDocument = path;
+      documentFailure = failure;
+    },
     snapshot() {
       return {
         activeBotId,
@@ -1767,6 +1787,7 @@ function installParallelBotTauriFixture(fixtureInput) {
           owner: clone(runOwners.get(runId)),
         })),
         cancelCalls: [...cancelCalls],
+        documentReads: clone(documentReads),
         approvalDecisions: clone(approvalDecisions),
         profileUpdates: clone(profileUpdates),
         schedules: clone(schedules),
@@ -4362,6 +4383,74 @@ async function auditAppStoreProviderDiscovery(browser, url, records, failures, s
   }
 }
 
+async function auditDocumentLifecycle(browser, url) {
+  const context = await browser.newContext();
+  await context.addInitScript([
+    installParallelBotTauriFixture,
+    `installParallelBotTauriFixture({ packagedSkillManifests: ${JSON.stringify(builtinSkillManifests)}, documentQa: true });`,
+  ].join("\n;\n"));
+  const page = await context.newPage();
+  const chooseDocument = page.getByRole("button", { name: "Choose document", exact: true });
+  const selected = page.getByRole("button", { name: "Remove selected document Supplier's A.txt", exact: true });
+  const composer = page.getByLabel("Message Alpha");
+  const newBotButton = page.getByRole("button", { name: "New bot", exact: true });
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  const fixtureState = (path, failure = false) => page.evaluate(
+    ({ nextPath, nextFailure }) => window.__CODELIT_PARALLEL_QA__.documentState(nextPath, nextFailure),
+    { nextPath: path, nextFailure: failure },
+  );
+  try {
+    await page.goto(url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Choose project", exact: true }).click();
+    await composer.fill("Read my selected document");
+    await chooseDocument.click();
+    await expect(selected).toBeVisible();
+    await newBotButton.click();
+    const newBot = page.getByRole("dialog", { name: "Create a bot" });
+    await newBot.waitFor({ state: "visible" });
+    await page.getByLabel("Bot job").fill("Second bot for document lifecycle.");
+    await newBot.getByRole("button", { name: "Create bot", exact: true }).click();
+    await newBot.waitFor({ state: "detached" });
+    await page.waitForFunction(() => window.__CODELIT_PARALLEL_QA__.snapshot().providerRuns.some((run) => (
+      run.owner?.botId !== "bot-alpha" && run.settled === null
+    )), undefined, { timeout: 5_000 });
+    const starterRunId = await page.evaluate(() => window.__CODELIT_PARALLEL_QA__.snapshot().providerRuns.find((run) => (
+      run.owner?.botId !== "bot-alpha" && run.settled === null
+    ))?.runId);
+    await page.evaluate((id) => window.__CODELIT_PARALLEL_QA__.complete(id, "The second bot is ready."), starterRunId);
+    await expect(selected).toHaveCount(0);
+    await page.locator(".bots-roster > button").filter({ hasText: "Alpha" }).first().click();
+    await page.locator(".bots-title strong").filter({ hasText: "Alpha" }).waitFor({ state: "visible" });
+    await expect(selected).toHaveCount(0);
+    await expect(composer).toHaveValue("Read my selected document");
+    await fixtureState(null);
+    await expect(selected).toHaveCount(0);
+    await chooseDocument.click();
+    await expect(selected).toHaveCount(0);
+    await expect(composer).toHaveValue("Read my selected document");
+    await fixtureState("Supplier's A.txt", true);
+    await chooseDocument.click();
+    await expect(selected).toBeVisible();
+    await send.click();
+    await expect(composer).toHaveValue("Read my selected document");
+    await expect(selected).toBeEnabled();
+    await fixtureState("Supplier's A.txt");
+    await send.click();
+    await expect(selected).toHaveCount(0);
+    await expect(composer).toHaveValue("");
+    const snapshot = await page.evaluate(() => window.__CODELIT_PARALLEL_QA__.snapshot());
+    if (snapshot.documentReads.length !== 2) {
+      throw new Error(`Expected two selected-document reads, saw ${snapshot.documentReads.length}.`);
+    }
+    const inputs = snapshot.documentReads[1].toolInputs;
+    if (JSON.stringify(inputs) !== JSON.stringify({ "Selected files": { expectedRoot: "/Users/qa/Codelit Project" } })) {
+      throw new Error(`The read did not bind to the approved root: ${JSON.stringify(inputs)}`);
+    }
+  } finally {
+    await context.close();
+  }
+}
+
 async function runRendererQa() {
   mkdirSync(outputDirectory, { recursive: true });
   const port = await availablePort();
@@ -4379,6 +4468,12 @@ async function runRendererQa() {
   try {
     await waitForServer(url, preview);
     browser = await chromium.launch({ headless: true });
+    if (process.argv.includes("--documents-only")) {
+      await auditDocumentLifecycle(browser, url);
+      process.stdout.write("Composer document lifecycle passed (renderer fixture only).\n");
+      return;
+    }
+    await auditDocumentLifecycle(browser, url);
     for (const matrix of matrices) {
       const context = await browser.newContext({
         viewport: { width: matrix.width, height: matrix.height },

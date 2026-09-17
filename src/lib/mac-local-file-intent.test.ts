@@ -1,10 +1,44 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  documentSelectionReducer,
   localConversationReply,
   parseLocalFileIntent,
   selectedFolderMatchesPurpose,
 } from "../../apps/mac/src/local-file-intent";
+
+describe("Composer document selection lifecycle", () => {
+  const scope = { botId: "a", root: "/approved/a" };
+  const selected = { ...scope, path: "Supplier's A.txt" };
+  const pick = { type: "picked" as const, scope, path: selected.path };
+
+  it("selects only for the current bot and approved root", () => {
+    expect(documentSelectionReducer(null, pick, scope)).toEqual(selected);
+    expect(documentSelectionReducer(null, pick, { ...scope, botId: "b" })).toBeNull();
+    expect(documentSelectionReducer(null, pick, { ...scope, root: "/approved/b" })).toBeNull();
+    expect(documentSelectionReducer(null, pick, { ...scope, root: null })).toBeNull();
+  });
+
+  it("invalidates on bot switch, folder change or revoked access and does not resurrect", () => {
+    for (const next of [{ ...scope, botId: "b" }, { ...scope, root: "/other" }, { ...scope, root: null }]) {
+      const cleared = documentSelectionReducer(selected, { type: "scope" }, next);
+      expect(cleared).toBeNull();
+      expect(documentSelectionReducer(cleared, { type: "scope" }, scope)).toBeNull();
+    }
+  });
+
+  it("preserves a selection on picker cancellation and read failure/cancellation", () => {
+    expect(documentSelectionReducer(selected, { ...pick, path: null }, scope)).toEqual(selected);
+    expect(documentSelectionReducer(selected, { type: "finished", selection: selected, success: false }, scope)).toEqual(selected);
+  });
+
+  it("consumes only the successful request selection and supports explicit removal", () => {
+    expect(documentSelectionReducer(selected, { type: "finished", selection: selected, success: true }, scope)).toBeNull();
+    expect(documentSelectionReducer(selected, { type: "remove" }, scope)).toBeNull();
+    const newer = { ...selected, path: "Other.txt" };
+    expect(documentSelectionReducer(newer, { type: "finished", selection: selected, success: true }, scope)).toEqual(newer);
+  });
+});
 
 describe("Mac local file and conversation intents", () => {
   it("answers a plain greeting without selecting project files", () => {

@@ -608,9 +608,15 @@ fn choose_local_mcp_executable() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn choose_workspace_document(state: State<'_, AppState>) -> Result<Option<String>, String> {
+fn choose_workspace_document(
+    state: State<'_, AppState>,
+    expected_root: String,
+) -> Result<Option<String>, String> {
     let bookmark = storage::load_workspace_bookmark(&state)?
         .ok_or_else(|| "Connect a folder first, then choose its documents.".to_string())?;
+    if bookmark.path != expected_root {
+        return Err("The approved folder changed. Select the document again.".into());
+    }
     macos::choose_workspace_document(&bookmark.bookmark)
 }
 

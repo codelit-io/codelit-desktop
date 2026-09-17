@@ -147,6 +147,7 @@ struct ToolDefinition {
     id: String,
     name: String,
     kind: ToolKind,
+    expected_root: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -413,7 +414,7 @@ fn run_local_tool_batch_inner(
     let tools = request
         .tools
         .iter()
-        .map(|name| resolve_tool(name))
+        .map(|name| resolve_scoped_tool(name, request.tool_inputs.get(name.trim())))
         .collect::<Result<Vec<_>, _>>()?;
     let browser_tool_count = tools
         .iter()
@@ -685,6 +686,14 @@ fn execute_in_root(
                 ToolKind::Files => repository_context(&root)?,
                 ToolKind::FolderListing => folder_listing_context(&root)?,
                 ToolKind::SelectedFiles => {
+                    if let Some(expected) = &tool.expected_root
+                        && Path::new(expected).canonicalize().ok().as_ref() != Some(&root)
+                    {
+                        return Err(
+                            "Select the document again inside the currently approved folder."
+                                .into(),
+                        );
+                    }
                     selected_file_context_with_cancellation(&root, handoff, cancellation)?
                 }
                 ToolKind::GitStatus => {
@@ -757,6 +766,22 @@ fn execute_in_root(
     execution
 }
 
+fn resolve_scoped_tool(name: &str, input: Option<&Value>) -> Result<ToolDefinition, String> {
+    let mut tool = resolve_tool(name)?;
+    if tool.kind == ToolKind::SelectedFiles
+        && let Some(expected) = input.and_then(|value| value.get("expectedRoot"))
+    {
+        tool.expected_root = Some(
+            expected
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .ok_or("Select the document again inside the currently approved folder.")?
+                .to_string(),
+        );
+    }
+    Ok(tool)
+}
+
 fn resolve_tool(name: &str) -> Result<ToolDefinition, String> {
     let cleaned = name.trim();
     if local_mcp::parse_local_mcp_tool_reference(cleaned)?.is_some() {
@@ -764,6 +789,7 @@ fn resolve_tool(name: &str) -> Result<ToolDefinition, String> {
             id: cleaned.into(),
             name: cleaned.into(),
             kind: ToolKind::Mcp,
+            expected_root: None,
         });
     }
     let normalized = cleaned.to_ascii_lowercase();
@@ -798,6 +824,7 @@ fn resolve_tool(name: &str) -> Result<ToolDefinition, String> {
         id: id.into(),
         name: cleaned.to_string(),
         kind,
+        expected_root: None,
     })
 }
 
@@ -2933,6 +2960,47 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("at most eight"));
+    }
+
+    #[test]
+    fn picked_selection_is_rejected_after_the_approved_root_changes() {
+        let directory = tempdir().expect("tempdir");
+        fs::write(directory.path().join("note.txt"), "Shared fact\n").unwrap();
+        let context = selected_file_context(directory.path(), "FILES: [\"note.txt\"]")
+            .expect("unbound selection keeps working for existing callers");
+        assert!(context.contains("File note.txt"));
+
+        let input = json!({"expectedRoot": directory.path()});
+        let (emitter, _) = test_emitter();
+        let read = |root: &Path| {
+            execute_in_root(
+                "run-picked",
+                root,
+                directory.path(),
+                "FILES: [\"note.txt\"]",
+                vec![resolve_scoped_tool("Selected files", Some(&input)).unwrap()],
+                &CancellationToken::default(),
+                &emitter,
+            )
+        };
+        assert!(
+            read(directory.path())
+                .unwrap()
+                .context
+                .join("\n")
+                .contains("Shared fact")
+        );
+        let other = tempdir().expect("other");
+        fs::write(other.path().join("note.txt"), "Different copy\n").unwrap();
+        let mismatch =
+            read(other.path()).expect_err("selection must not follow a different approved root");
+        assert!(mismatch.contains("again inside the currently approved folder"));
+        for invalid in [json!(null), json!(false), json!("")] {
+            assert!(
+                resolve_scoped_tool("Selected files", Some(&json!({"expectedRoot": invalid})))
+                    .is_err()
+            );
+        }
     }
 
     #[test]
