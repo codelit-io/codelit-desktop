@@ -2213,6 +2213,32 @@ fn project_fingerprint(root: &Path) -> Result<LocalProjectFingerprint, String> {
     })
 }
 
+pub fn selected_document_path(root: &Path, path: &Path) -> Result<String, String> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| "Choose a document inside the connected folder.".to_string())?;
+    let name = relative.to_str().ok_or("Choose a UTF-8 filename.")?;
+    if name.len() > 240 || !safe_text_path(relative) || !safe_file_without_symlinks(root, relative)
+    {
+        return Err("Choose an accessible document inside the connected folder; protected files and links are unavailable.".into());
+    }
+    let extension = relative
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "txt" | "md" | "markdown" | "csv") {
+        return Err(
+            "Choose TXT, Markdown or CSV. Export PDF and other formats as UTF-8 text first.".into(),
+        );
+    }
+    let metadata = fs::metadata(path).map_err(|_| "Select the document again.".to_string())?;
+    if !metadata.is_file() || metadata.len() > 64 * 1024 {
+        return Err("Choose a regular text file no larger than 64 KiB.".into());
+    }
+    Ok(name.to_string())
+}
+
 fn selected_paths(handoff: &str) -> Result<Vec<String>, String> {
     let selection = handoff
         .lines()
@@ -2836,6 +2862,37 @@ mod tests {
         assert!(context.contains("export const ready"));
         assert!(!context.contains("SECRET="));
         assert!(!context.contains("outside.txt"));
+    }
+
+    #[test]
+    fn selected_document_picker_accepts_only_bounded_supported_paths() {
+        use std::os::unix::fs::symlink;
+        let directory = tempdir().expect("tempdir");
+        let root = directory.path().to_path_buf();
+        fs::write(root.join("Supplier A.csv"), "supplier,price\nAcme,120\n").unwrap();
+        fs::write(root.join("scan.pdf"), b"%PDF-1.7").unwrap();
+        fs::create_dir_all(root.join("docs")).unwrap();
+        symlink(root.join("Supplier A.csv"), root.join("docs/link.csv")).unwrap();
+        fs::write(root.join("Big.txt"), "a".repeat(64 * 1024 + 1)).unwrap();
+
+        assert_eq!(
+            selected_document_path(&root, &root.join("Supplier A.csv")).expect("supported"),
+            "Supplier A.csv"
+        );
+        for rejected in [
+            root.join("scan.pdf"),
+            root.join("docs/link.csv"),
+            root.join("Big.txt"),
+            root.join("missing.txt"),
+        ] {
+            assert!(
+                selected_document_path(&root, &rejected).is_err(),
+                "{rejected:?}"
+            );
+        }
+        let outside = tempdir().expect("outside");
+        fs::write(outside.path().join("outside.txt"), "no\n").unwrap();
+        assert!(selected_document_path(&root, &outside.path().join("outside.txt")).is_err());
     }
 
     #[test]

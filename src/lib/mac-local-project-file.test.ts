@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { readLocalProjectFile } from "../../apps/mac/src/runtime";
+import { readLocalProjectFile, readSelectedFiles } from "../../apps/mac/src/runtime";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -44,5 +44,25 @@ describe("Explicit Mac project-file reads", () => {
   it("preserves native denials for protected, symlinked, unavailable, or oversized files", async () => {
     vi.mocked(invoke).mockRejectedValue(new Error("The selected file is not available for this scoped read."));
     await expect(readLocalProjectFile("file-qa", "acceptance.txt", () => {})).rejects.toThrow("not available");
+  });
+
+  it("passes a picked document as a lossless JSON selection", async () => {
+    const handoff = `FILES: ${JSON.stringify(["Supplier's A.txt"])}`;
+    vi.mocked(invoke).mockResolvedValue({
+      status: "completed",
+      context: ["File Supplier's A.txt (1 lines total):\n    1 | Proposal\n"],
+      completedTools: [{ toolId: "selected-files-read", toolName: "Selected files" }],
+      browserProofs: [],
+    });
+    await readSelectedFiles("file-qa", handoff, () => {});
+    expect(invoke).toHaveBeenCalledWith("run_local_tool_batch", {
+      request: {
+        runId: "file-qa",
+        tools: ["Selected files"],
+        handoff,
+        toolInputs: {},
+      },
+      onEvent: expect.anything(),
+    });
   });
 });

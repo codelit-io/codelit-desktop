@@ -33,10 +33,17 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 - [x] Confirm correct branch, prior commits and clean tracked tree; read task, roadmap, README and release/harness contracts. No AGENTS.md found.
 - [x] Reproduce quoted/spaced path and missing-named-source regressions before fixing native selection parsing.
 - [x] Verify bounded selected-path handling without broadening folder access (commit follows).
-- [ ] Wire the smallest native-backed composer source-selection surface; preserve the request on cancellation/errors.
+- [x] Wire the smallest native-backed composer source-selection surface; preserve the request on cancellation/errors.
 - [ ] Continue independent continuity and capability discovery work; run full source checks and record exact remaining gates.
 
 Baseline remains eight files / 64 KiB each, approved folder bookmarks, no PDF parser or document picker. Existing untracked task inputs and `.qa-logs/` are not this batch's changes. Renderer budget and physical/model acceptance remain open; no owner decision is needed for independent native work.
+
+### Next-batch slice 2: composer document picker (in progress)
+
+- Added `choose_workspace_document` native command: NSOpenPanel scoped to the approved folder bookmark, files only, one file, validates path/extension/size via `selected_document_path` (TXT/MD/CSV, ≤64 KiB, no symlinks/protected names/traversal). Returns the relative path; no bytes are read at pick time.
+- `BotsApp.tsx` adds a composer "Document" capability button (only when folder access is validated), prefilling `Summarize <name> with cited line numbers.` if the composer is empty; submission routes the picked path through the new `readSelectedFiles` JSON selection so spaces/quotes survive intact.
+- Verification on this checkout: Node 24 tsc clean, vitest 339 passed (36 files) including a new JSON-selection handoff test; native 275 passed / 7 ignored; cargo fmt and clippy `-D warnings` clean. Measured renderer gate: entry 500,177 bytes (over 500,000 by 177) and total 223,456 gzip (over 223,000 by 456); clean baseline at `b231a5d` measured entry under budget and total 223,277 gzip (249 over). The picker adds ~177 entry bytes / ~179 gzip over that failing baseline; budget remains unchanged and failing, recorded as an open gate. No physical device, signed candidate, or real-model run.
+
 
 Recovery 2026-09-17: confirmed `codex/union-alpha-mac-value` at `3c5f1a5`, preserving `69cc9ca` and the pending 100-line native document diff. Finish bounded TXT/Markdown/CSV source context first; then one renderer-budget investigation, independent native-document work, reviewed continuity, and capability-aware starters. Existing progress is continued, not restarted.
 

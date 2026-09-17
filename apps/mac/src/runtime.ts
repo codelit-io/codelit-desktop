@@ -1952,6 +1952,13 @@ export async function chooseWorkspaceFolder(
   return invoke<LocalWorkspaceSnapshot | null>("choose_workspace_folder", { purpose });
 }
 
+export async function chooseWorkspaceDocument(): Promise<string | null> {
+  if (!isNativeRuntime()) {
+    throw new Error("Document selection is available only inside Codelit for Mac.");
+  }
+  return invoke<string | null>("choose_workspace_document");
+}
+
 export async function exportLocalWorkspace(): Promise<string | null> {
   if (!isNativeRuntime()) {
     throw new Error("Workspace export is available only inside Codelit for Mac.");
@@ -3261,10 +3268,18 @@ export async function readLocalProjectFile(
     || path.split("/").some((part) => !part || part === "." || part === "..")) {
     throw new Error("Choose one file inside the connected project using its relative path.");
   }
+  return readSelectedFiles(runId, `FILES: ${path}`, onEvent);
+}
+
+export async function readSelectedFiles(
+  runId: string,
+  handoff: string,
+  onEvent: (event: ProviderRunEvent) => void,
+): Promise<LocalToolBatchResult> {
   const eventChannel = new Channel<ProviderRunEvent>();
   eventChannel.onmessage = onEvent;
   return invoke<LocalToolBatchResult>("run_local_tool_batch", {
-    request: { runId, tools: ["Selected files"], handoff: `FILES: ${path}`, toolInputs: {} },
+    request: { runId, tools: ["Selected files"], handoff, toolInputs: {} },
     onEvent: eventChannel,
   });
 }

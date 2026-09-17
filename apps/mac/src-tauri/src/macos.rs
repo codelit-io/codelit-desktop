@@ -519,6 +519,28 @@ mod platform {
         Ok(Some(bookmark_for_selected_url(&url)?))
     }
 
+    pub fn choose_workspace_document(bookmark: &[u8]) -> Result<Option<String>, String> {
+        let main_thread = MainThreadMarker::new()
+            .ok_or_else(|| "Open document selection from the main app thread.".to_string())?;
+        with_workspace_folder_access(bookmark, |root| {
+            let panel = open_panel(main_thread)?;
+            panel.setCanChooseDirectories(false);
+            panel.setCanChooseFiles(true);
+            panel.setAllowsMultipleSelection(false);
+            panel.setResolvesAliases(false);
+            panel.setTitle(Some(&NSString::from_str("Choose a text document")));
+            panel.setMessage(Some(&NSString::from_str(
+                "Choose a TXT, Markdown or CSV file inside the connected folder (64 KiB maximum). Contents are read when you send your request.",
+            )));
+            if panel.runModal() != NSModalResponseOK {
+                return Ok(None);
+            }
+            let url = panel.URL().ok_or("macOS did not return the document.")?;
+            let path = local_path(&url)?;
+            crate::tool_runtime::selected_document_path(root, Path::new(&path)).map(Some)
+        })
+    }
+
     pub fn choose_local_executable() -> Result<Option<String>, String> {
         let main_thread = MainThreadMarker::new().ok_or_else(|| {
             "The executable picker must be opened from the main app thread.".to_string()
@@ -1187,6 +1209,14 @@ mod platform {
         Err("Local folder permissions are available only on macOS.".into())
     }
 
+    pub fn choose_workspace_documents(_bookmark: &[u8]) -> Result<Option<Vec<String>>, String> {
+        Err("Document selection is available only on macOS.".into())
+    }
+
+    pub fn choose_workspace_document(_bookmark: &[u8]) -> Result<Option<String>, String> {
+        Err("Document selection is available only on macOS.".into())
+    }
+
     pub fn choose_local_executable() -> Result<Option<String>, String> {
         Err("Local executable selection is available only on macOS.".into())
     }
@@ -1271,12 +1301,13 @@ mod platform {
 
 pub use platform::{
     accessibility_permission_granted, activate_application, choose_local_executable,
-    choose_workspace_folder, computer_environment, continuous_time_nanos, delete_cloud_credential,
-    list_running_applications, load_cloud_credential, load_or_create_data_key,
-    open_accessibility_settings, open_background_service_settings, open_external_https,
-    open_hugging_face_model_page, open_skill_package, open_workspace_archive,
-    probe_background_service, release_browser_download, replace_data_key,
-    request_screen_capture_permission, resolve_workspace_bookmark, save_bot_table_csv,
-    save_pilot_report, save_workspace_archive, screen_capture_permission_granted,
-    set_background_service_enabled, store_cloud_credential, with_workspace_folder_access,
+    choose_workspace_document, choose_workspace_folder, computer_environment,
+    continuous_time_nanos, delete_cloud_credential, list_running_applications,
+    load_cloud_credential, load_or_create_data_key, open_accessibility_settings,
+    open_background_service_settings, open_external_https, open_hugging_face_model_page,
+    open_skill_package, open_workspace_archive, probe_background_service, release_browser_download,
+    replace_data_key, request_screen_capture_permission, resolve_workspace_bookmark,
+    save_bot_table_csv, save_pilot_report, save_workspace_archive,
+    screen_capture_permission_granted, set_background_service_enabled, store_cloud_credential,
+    with_workspace_folder_access,
 };

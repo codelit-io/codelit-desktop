@@ -12,6 +12,7 @@ import {
   CircleAlert,
   CircleStop,
   Download,
+  FileText,
   FolderOpen,
   FolderSync,
   Globe2,
@@ -188,6 +189,7 @@ import {
   claimDueLocalSchedules,
   clearLocalBotMemories,
   chooseWorkspaceFolder,
+  chooseWorkspaceDocument,
   consumeLocalNotification,
   createLocalBot,
   createLocalBotDelegation,
@@ -249,6 +251,7 @@ import {
   providerRunProvenance,
   readLocalProjectFingerprint,
   readLocalFolderListing,
+  readSelectedFiles,
   readLocalBrowserContext,
   releaseQuarantinedBrowserDownload,
   recoverLocalBotDelegations,
@@ -258,7 +261,6 @@ import {
   reviewLocalBotMemoryProposal,
   reviewImportedBotSkill,
   readLocalProjectContext,
-  readLocalProjectFile,
   runIntelligenceTask,
   runApprovedLocalBrowserAction,
   runApprovedLocalMcpCall,
@@ -913,6 +915,7 @@ export default function BotsApp() {
   const [globalNotice, setGlobalNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [choosingFolder, setChoosingFolder] = useState(false);
+  const [pickedDocument, setPickedDocument] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [deleteWorkspaceOpen, setDeleteWorkspaceOpen] = useState(false);
   const [deleteWorkspaceConfirmation, setDeleteWorkspaceConfirmation] = useState("");
@@ -2158,6 +2161,27 @@ export default function BotsApp() {
         const refreshed = await bootstrapBots();
         setCatalog(refreshed);
         setGlobalNotice("Project connected read-only");
+      }
+    } catch (reason) {
+      setGlobalError(errorMessage(reason));
+    } finally {
+      setChoosingFolder(false);
+    }
+  };
+
+  const pickDocument = async () => {
+    if (choosingFolder || hasAnyActiveRun) return;
+    setChoosingFolder(true);
+    setGlobalError(null);
+    try {
+      const document = await chooseWorkspaceDocument();
+      if (document) {
+        setPickedDocument(document);
+        if (!prompt.trim()) {
+          setPrompt(`Summarize ${document} with cited line numbers.`);
+        }
+        setGlobalNotice(`Selected ${document}. Contents are read when you send the request.`);
+        composerRef.current?.focus();
       }
     } catch (reason) {
       setGlobalError(errorMessage(reason));
@@ -5580,8 +5604,9 @@ export default function BotsApp() {
         const purpose = localFileIntent.kind === "list-folder"
           ? localFileIntent.purpose
           : "project";
-        const folderReady = runWorkspace.workspaceFolder?.accessValidated
-          && selectedFolderMatchesPurpose(runWorkspace.workspaceFolder.path, purpose);
+        const folderReady = pickedDocument
+          || (runWorkspace.workspaceFolder?.accessValidated
+          && selectedFolderMatchesPurpose(runWorkspace.workspaceFolder.path, purpose));
         if (!folderReady) {
           setChoosingFolder(true);
           setPromptsByBotId((current) => ({ ...current, [botId]: "" }));
@@ -5619,7 +5644,8 @@ export default function BotsApp() {
         }
       }
     }
-    const projectFile = localFileIntent?.kind === "read-project-file" ? localFileIntent.path : null;
+    const projectFile = pickedDocument
+      || (localFileIntent?.kind === "read-project-file" ? localFileIntent.path : null);
     const localReadOnly = localFileIntent?.kind === "list-folder"
       || Boolean(projectFile && parseBotBrowserTarget(submitted).kind === "none");
     const selectedEngine: IntelligenceSelection | null = localReadOnly
@@ -5775,7 +5801,7 @@ export default function BotsApp() {
           consumeRunEvent(botId, event, events);
         };
         const listing = projectFile
-          ? await readLocalProjectFile(runId, projectFile, onRunEvent)
+          ? await readSelectedFiles(runId, `FILES: ${JSON.stringify([projectFile])}`, onRunEvent)
           : await readLocalFolderListing(runId, onRunEvent);
         if (listing.status !== "completed" || !listing.context[0]) {
           throw new Error(events.at(-1)?.message || "Codelit could not read the selected files.");
@@ -7715,6 +7741,18 @@ export default function BotsApp() {
               <button className="composer-context-button" onClick={() => void connectProject()} title="Choose project" aria-label="Choose project" disabled={hasAnyActiveRun}>
                 <FolderOpen size={16} />
               </button>
+              {workspace?.workspaceFolder?.accessValidated && (
+                <button
+                  type="button"
+                  className="composer-capability composer-capability-button"
+                  onClick={() => void pickDocument()}
+                  title="Choose a text document in the connected folder"
+                  aria-label="Choose document"
+                  disabled={hasAnyActiveRun || choosingFolder}
+                >
+                  <FileText size={14} /> Document
+                </button>
+              )}
               {catalog.bots.length > 1 && (
                 <button
                   type="button"

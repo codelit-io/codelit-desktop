@@ -608,6 +608,13 @@ fn choose_local_mcp_executable() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn choose_workspace_document(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let bookmark = storage::load_workspace_bookmark(&state)?
+        .ok_or_else(|| "Connect a folder first, then choose its documents.".to_string())?;
+    macos::choose_workspace_document(&bookmark.bookmark)
+}
+
+#[tauri::command]
 fn list_local_mcp_servers(state: State<'_, AppState>) -> Result<Vec<LocalMcpServer>, String> {
     local_mcp::list_local_mcp_servers(&state)
 }
@@ -1701,6 +1708,7 @@ pub fn run() {
             update_local_bot_goal,
             update_local_bot_routines,
             choose_workspace_folder,
+            choose_workspace_document,
             read_local_project_fingerprint,
             choose_local_mcp_executable,
             list_local_mcp_servers,
