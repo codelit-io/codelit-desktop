@@ -32,7 +32,7 @@ required-features = ["release-tools"]
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
-aes-gcm = "0.10.3"
+aes-gcm = "0.11.1"
 base64 = "0.22.1"
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "serde"] }
 chrono-tz = "0.10.4"
