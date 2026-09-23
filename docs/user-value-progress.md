@@ -13,8 +13,8 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 - [x] Recovery actions bounded and prompt-preserving after failure (verified unchanged; conversational questions no longer get goal/skill suggestions)
 
 ### Phase 2: private document assistant MVP
-- [ ] Selected-file documents (TXT/MD/CSV) through existing sandboxed file access
-- [x] First native slice: bounded UTF-8 excerpts with physical-line citations (CSV records/columns still pending)
+- [x] Selected-file documents (TXT/MD/CSV) through existing sandboxed file access
+- [x] Bounded UTF-8 excerpts with physical-line citations; CSV records now have structured fields and record/line locators
 - [ ] Cancellation + resource limits; clear states for unreadable/unsupported files
 - [ ] Text-PDF slice after maintained-parser license/sandbox validation
 
@@ -28,12 +28,20 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 
 ## Current task
 
+### Isolated continuation 2026-09-23 (starting at `0b6044d`)
+
+- [x] Create isolated worktree on `codex/union-alpha-mac-value-luna`; source worktree and its untracked task inputs remain untouched.
+- [x] Validate the latest renderer with Node 24.21.0 and app-pinned Vite 8.2.1: entry 492,429/500,000 bytes passes; total JavaScript 223,525/223,000 gzip fails by 525 bytes. Two scoped chunk-group experiments did not reduce output and were discarded; limits remain unchanged.
+- [x] Parse CSV as logical records/fields with cited physical-line spans, including quoted multiline cells; reject unclosed quoted fields and preserve the existing 64 KiB/file, eight-file, approved-folder, and total-context bounds. No PDF parser added.
+- [x] Vitest 358/358; Direct native tests 280 passed/7 ignored; App Store native tests 271 passed/6 ignored; clippy `-D warnings` passed for both profiles; rustfmt clean.
+- [ ] Renderer total-gzip release budget remains open. Signed-candidate sandbox/source-opening, 8 GB physical-device, supported-model corpus, and observed-user gates remain owner-side and unverified.
+
 ### Continuation 2026-09-17 (starting at 9a9a838)
 
 - [x] Inspect branch, pending classifier/test, README and release/harness contracts; preserve prior selection evidence and untracked task/log inputs. No AGENTS.md found.
 - [x] Reproduce pending `thanks, that helped` regression: Node 24.14.0 Vitest exit 1 (4 passed / 1 failed); incorrectly proposes goal and skill.
 - [x] Replace complex greeting regex with bounded classification; test actionable can-you and greeting-plus-task requests. Node 24.14.0: 25 focused outcome tests pass and `tsc --noEmit` passes. Corrected one overstrict new assertion: skill-name prompts intentionally do not embed the full request. Classifier strips a greeting then matches bounded acknowledgements/capability questions; can-you task requests retain actions. This is renderer logic evidence only, not model quality.
-- [x] One purposeful renderer optimization: explicit shared Lucide chunk in `vite.config.ts`. Node 24.14.0 app npm check (Vite 8.2.1) builds/types successfully, entry 492,429 bytes now under 500,000; total 223,525 gzip remains 525 over unchanged 223,000. Full Vitest 358 passed / 37 files; renderer QA 74 records passed (fixture only); Rust fmt/clippy all-targets `-D warnings` pass. No limits changed. An initial command used root Vite 7.3.6 accidentally; its 231,371 measurement is invalid for this workflow. No baseline checkout comparisons. Concrete next optimization proposal: move browser-preview fallback state out of the eager runtime module, preserving preview behavior with lazy loading, then consolidate remaining small shared chunks only if total gzip decreases; not implemented or claimed here.
+- [x] One purposeful renderer optimization: explicit shared Lucide chunk in `vite.config.ts`. Node 24.14.0 app npm check (Vite 8.2.1) builds/types successfully, entry 492,429 bytes now under 500,000; total 223,525 gzip remains 525 over unchanged 223,000. Full Vitest 358 passed / 37 files; renderer QA 74 records passed (fixture only); Rust fmt/clippy all-targets `-D warnings` pass. No limits changed. An initial command used root Vite 7.3.6 accidentally; its 231,371 measurement is invalid for this workflow. No baseline checkout comparisons. Rechecked 2026-09-23: `LocalBrowserPanel` was already lazy-loaded; two focused chunk-group experiments did not reduce total gzip and were discarded.
 - [ ] Continue feasible document/continuity/discovery slices, then full checks and precise gate report.
 
 Baseline remains partial document MVP (single picker, eight files/64 KiB native boundary; no PDF, cache or source-opening UI). Physical sandbox, supported-model corpus, device and user acceptance remain unverified. Existing lifecycle fixture evidence above/below is preserved, not rerun evidence.

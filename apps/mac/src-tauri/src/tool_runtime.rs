@@ -2397,21 +2397,21 @@ fn selected_file_context_with_cancellation(
                 "File {relative} is not a supported text document. Export it as TXT, Markdown, or CSV."
             ));
         }
-        context.push(numbered_document_context(&relative, text, per_file_limit));
+        context.push(numbered_document_context(&relative, text, per_file_limit)?);
     }
     Ok(context.join("\n\n"))
 }
 
-fn numbered_document_context(relative: &str, text: &str, limit: usize) -> String {
+fn numbered_document_context(relative: &str, text: &str, limit: usize) -> Result<String, String> {
+    if relative.to_ascii_lowercase().ends_with(".csv") {
+        return numbered_csv_context(relative, text, limit);
+    }
     let total = text.lines().count();
     let mut context = format!("File {relative} ({total} lines total):\n");
-    if relative.to_ascii_lowercase().ends_with(".csv") {
-        context.push_str("Locators are physical lines, not CSV records.\n");
-    }
     let reserve =
         format!("Partial: lines 1-{total} of {total}; remaining text not inspected.\n").len();
     if context.len() + reserve > limit {
-        return String::new();
+        return Ok(String::new());
     }
     let mut included = 0;
     for (index, line) in text.lines().enumerate() {
@@ -2433,7 +2433,83 @@ fn numbered_document_context(relative: &str, text: &str, limit: usize) -> String
     } else if total == 0 {
         context.push_str("Empty document; no facts to extract.\n");
     }
-    context
+    Ok(context)
+}
+
+fn numbered_csv_context(relative: &str, text: &str, limit: usize) -> Result<String, String> {
+    let mut characters = text.chars().peekable();
+    let mut quoted = false;
+    let mut field_start = true;
+    while let Some(character) = characters.next() {
+        if quoted {
+            if character == '"' {
+                if characters.peek() == Some(&'"') {
+                    characters.next();
+                } else {
+                    quoted = false;
+                }
+            }
+        } else if character == '"' && field_start {
+            quoted = true;
+            field_start = false;
+        } else {
+            field_start = matches!(character, ',' | '\n' | '\r');
+        }
+    }
+    if quoted {
+        return Err(format!(
+            "File {relative} contains malformed CSV. Export a valid UTF-8 CSV and select it again."
+        ));
+    }
+
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(text.as_bytes());
+    let mut records = Vec::new();
+    for (index, result) in reader.records().enumerate() {
+        let record = result.map_err(|_| format!("File {relative} contains malformed CSV. Export a valid UTF-8 CSV and select it again."))?;
+        let start = record
+            .position()
+            .map_or(1, |position| position.line() as usize);
+        let embedded_lines = record
+            .iter()
+            .map(|field| field.matches('\n').count())
+            .sum::<usize>();
+        let end = start + embedded_lines;
+        records.push((index + 1, start, end, record));
+    }
+
+    let mut context = format!("File {relative} ({} CSV records total):\n", records.len());
+    let reserve = format!(
+        "Partial: records 1-{} of {}; remaining records not inspected.\n",
+        records.len(),
+        records.len()
+    )
+    .len();
+    if context.len() + reserve > limit {
+        return Ok(String::new());
+    }
+    let mut included = 0;
+    for (number, start, end, record) in &records {
+        let fields = serde_json::to_string(&record.iter().collect::<Vec<_>>())
+            .map_err(|_| format!("File {relative} could not be represented as CSV records."))?;
+        let row = format!("Record {number} (lines {start}-{end}), columns 1..: {fields}\n");
+        if context.len() + row.len() + reserve > limit || included == 2_000 {
+            break;
+        }
+        context.push_str(&row);
+        included += 1;
+    }
+    if included < records.len() {
+        context.push_str(&format!(
+            "Partial: records 1-{included} of {}; remaining records not inspected.\n",
+            records.len()
+        ));
+    } else if records.is_empty() {
+        context.push_str("Empty CSV; no records to inspect.\n");
+    }
+    Ok(context)
 }
 
 fn safe_file_without_symlinks(root: &Path, relative: &Path) -> bool {
@@ -3019,13 +3095,20 @@ mod tests {
             "supplier,scope\nAcme,\"delivery\ninstallation\"\n{}",
             "é".repeat(500)
         );
-        let context = numbered_document_context("prices.csv", &text, 240);
+        let context = numbered_document_context("prices.csv", &text, 4_000).expect("CSV context");
 
-        assert!(context.len() <= 240, "{} bytes: {context}", context.len());
-        assert!(context.contains("    2 | Acme,\"delivery"));
-        assert!(context.contains("physical lines, not CSV records"));
-        assert!(context.contains("Partial: lines 1-3 of 4; remaining text not inspected."));
-        assert!(!context.contains("rows"));
+        assert!(context.len() <= 4_000, "{} bytes: {context}", context.len());
+        assert!(context.contains("File prices.csv (3 CSV records total):"));
+        assert!(
+            context.contains(
+                "Record 2 (lines 2-3), columns 1..: [\"Acme\",\"delivery\\ninstallation\"]"
+            )
+        );
+        assert!(context.contains("Record 3 (lines 4-4), columns 1..:"));
+        let partial =
+            numbered_document_context("prices.csv", &text, 220).expect("bounded CSV context");
+        assert!(partial.len() <= 220, "{} bytes: {partial}", partial.len());
+        assert!(partial.contains("Partial: records 1-"));
     }
 
     #[test]
@@ -3058,16 +3141,28 @@ mod tests {
             b"%PDF-1.7 \xff\xfe not text",
         )
         .expect("binary");
+        fs::write(
+            directory.path().join("broken.csv"),
+            "name,description\nAcme,\"unterminated\n",
+        )
+        .expect("malformed CSV");
 
         let context = selected_file_context(directory.path(), "FILES: `prices.csv`")
             .expect("document context");
 
-        assert!(context.contains("File prices.csv (3 lines total):"));
-        assert!(context.contains("    2 | Acme,120,delivery"));
-        assert!(context.contains("physical lines, not CSV records"));
+        assert!(context.contains("File prices.csv (3 CSV records total):"));
+        assert!(
+            context.contains("Record 2 (lines 2-2), columns 1..: [\"Acme\",\"120\",\"delivery\"]")
+        );
+        assert!(
+            context.contains("Record 3 (lines 3-3), columns 1..: [\"Borealis\",\"95\",\"full\"]")
+        );
         let error = selected_file_context(directory.path(), "FILES: `prices.csv`, `scan.pdf`")
             .expect_err("unsupported format must not count as completed reading");
         assert!(error.contains("needs a TXT, Markdown, or CSV export"));
+        let error = selected_file_context(directory.path(), "FILES: broken.csv")
+            .expect_err("malformed CSV must not be presented as successfully parsed");
+        assert!(error.contains("malformed CSV"));
     }
 
     #[test]
@@ -3117,9 +3212,10 @@ mod tests {
             fs::write(directory.path().join("notes.txt"), bytes).expect("fixture");
             assert!(selected_file_context(directory.path(), "FILES: notes.txt").is_err());
         }
-        let empty = numbered_document_context("empty.txt", "", 200);
+        let empty = numbered_document_context("empty.txt", "", 200).expect("empty text context");
         assert!(empty.contains("Empty document; no facts to extract."));
-        let long = numbered_document_context("long.txt", &"a".repeat(1_000), 200);
+        let long = numbered_document_context("long.txt", &"a".repeat(1_000), 200)
+            .expect("bounded text context");
         assert!(long.contains("no complete lines fit"));
         assert!(long.len() <= 200);
     }
