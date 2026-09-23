@@ -2437,6 +2437,17 @@ fn numbered_document_context(relative: &str, text: &str, limit: usize) -> Result
 }
 
 fn numbered_csv_context(relative: &str, text: &str, limit: usize) -> Result<String, String> {
+    let bytes = text.as_bytes();
+    if bytes
+        .iter()
+        .enumerate()
+        .any(|(index, byte)| *byte == b'\r' && bytes.get(index + 1) != Some(&b'\n'))
+    {
+        return Err(format!(
+            "File {relative} uses unsupported CR-only line endings. Save the CSV with LF or CRLF line endings and select it again."
+        ));
+    }
+
     let mut characters = text.chars().peekable();
     let mut quoted = false;
     let mut field_start = true;
@@ -2469,9 +2480,18 @@ fn numbered_csv_context(relative: &str, text: &str, limit: usize) -> Result<Stri
     let mut records = Vec::new();
     for (index, result) in reader.records().enumerate() {
         let record = result.map_err(|_| format!("File {relative} contains malformed CSV. Export a valid UTF-8 CSV and select it again."))?;
-        let start = record
+        let record_offset = record
             .position()
-            .map_or(1, |position| position.line() as usize);
+            .map_or(0, |position| position.byte() as usize);
+        let crlf_boundary = record_offset > 0
+            && bytes.get(record_offset - 1) == Some(&b'\r')
+            && bytes.get(record_offset) == Some(&b'\n');
+        let line_breaks = text[..record_offset]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count()
+            + usize::from(crlf_boundary);
+        let start = line_breaks + 1;
         let embedded_lines = record
             .iter()
             .map(|field| field.matches('\n').count())
@@ -3109,6 +3129,16 @@ mod tests {
             numbered_document_context("prices.csv", &text, 220).expect("bounded CSV context");
         assert!(partial.len() <= 220, "{} bytes: {partial}", partial.len());
         assert!(partial.contains("Partial: records 1-"));
+
+        let crlf = numbered_document_context("windows.csv", "name,value\r\nAcme,12\r\n", 400)
+            .expect("CRLF CSV context");
+        assert!(
+            crlf.contains("Record 2 (lines 2-2), columns 1..: [\"Acme\",\"12\"]"),
+            "{crlf}"
+        );
+        let cr_only = numbered_document_context("classic.csv", "name,value\rAcme,12\r", 400)
+            .expect_err("CR-only line locators are unsupported");
+        assert!(cr_only.contains("Save the CSV with LF or CRLF"));
     }
 
     #[test]

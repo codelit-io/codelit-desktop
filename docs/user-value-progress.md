@@ -31,10 +31,10 @@ Baseline (2026-09-17): released v0.1.2 App Store build; capability profile exclu
 ### Isolated continuation 2026-09-23 (starting at `0b6044d`)
 
 - [x] Create isolated worktree on `codex/union-alpha-mac-value-luna`; source worktree and its untracked task inputs remain untouched.
-- [x] Validate the latest renderer with Node 24.21.0 and app-pinned Vite 8.2.1: entry 492,429/500,000 bytes passes; total JavaScript 223,525/223,000 gzip fails by 525 bytes. Two scoped chunk-group experiments did not reduce output and were discarded; limits remain unchanged.
-- [x] Parse CSV as logical records/fields with cited physical-line spans, including quoted multiline cells; reject unclosed quoted fields and preserve the existing 64 KiB/file, eight-file, approved-folder, and total-context bounds. No PDF parser added.
-- [x] Vitest 358/358; Direct native tests 280 passed/7 ignored; App Store native tests 271 passed/6 ignored; clippy `-D warnings` passed for both profiles; rustfmt clean.
-- [ ] Renderer total-gzip release budget remains open. Signed-candidate sandbox/source-opening, 8 GB physical-device, supported-model corpus, and observed-user gates remain owner-side and unverified.
+- [x] Validate the latest renderer with Node 24.21.0 and app-pinned Vite 8.2.1. Manifest/sourcemap tracing showed four small artifact/review dynamic entries; a shared deferred loader reduced total JS gzip from 223,525 to 222,498 bytes (1,027 saved), with initial 147,671/150,000 and largest deferred 46,256/55,000. Entry remains 492,473/500,000 bytes. Budgets unchanged.
+- [x] Parse CSV as logical records/fields with cited physical-line spans for LF/CRLF, including quoted multiline cells; reject unclosed quotes and CR-only line endings rather than risk inaccurate citations. Preserve the existing 64 KiB/file, eight-file, approved-folder, and total-context bounds. `csv`/`csv-core` are Unlicense/MIT; `ryu` is Apache-2.0 OR BSL-1.0. Restored tempfile's existing `getrandom 0.3.4` lock edge; `cargo check --locked` and locked profile tests pass. No PDF parser added.
+- [x] Vitest 358/358; Direct native tests 280 passed/7 ignored; App Store native tests 271 passed/6 ignored; `desktop:check` passed; renderer QA passed 74 records; clippy `-D warnings` passed for both profiles; rustfmt clean.
+- [ ] Signed-candidate sandbox/source-opening, 8 GB physical-device, supported-model corpus, and observed-user gates remain owner-side and unverified.
 
 ### Continuation 2026-09-17 (starting at 9a9a838)
 

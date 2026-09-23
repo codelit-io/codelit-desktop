@@ -303,11 +303,11 @@ import "./BotsApp.css";
 
 const BotBrowserSkillRunActivity = lazy(() => import("./components/BotBrowserSkillRunActivity"));
 const BotBrowserTeachingActivity = lazy(() => import("./components/BotBrowserTeachingActivity"));
-const BotDataTableArtifact = lazy(() => import("./components/BotDataTableArtifact"));
-const BotDownloadArtifacts = lazy(() => import("./components/BotDownloadArtifacts"));
-const BotMemoryProposals = lazy(() => import("./components/BotMemoryProposals"));
+const BotDataTableArtifact = lazy(() => import("./components/BotReviewSurfaces").then((module) => ({ default: module.BotDataTableArtifact })));
+const BotDownloadArtifacts = lazy(() => import("./components/BotReviewSurfaces").then((module) => ({ default: module.BotDownloadArtifacts })));
+const BotMemoryProposals = lazy(() => import("./components/BotReviewSurfaces").then((module) => ({ default: module.BotMemoryProposals })));
 const BotOutcomeActions = lazy(() => import("./components/BotOutcomeActions"));
-const BotSkillReviews = lazy(() => import("./components/BotSkillReviews"));
+const BotSkillReviews = lazy(() => import("./components/BotReviewSurfaces").then((module) => ({ default: module.BotSkillReviews })));
 const BotMarkdown = lazy(() => import("./components/BotMarkdown"));
 const ConversationFind = lazy(() => import("./components/ConversationFind"));
 const LocalBrowserPanel = lazy(() => import("./components/LocalBrowserPanel"));
